@@ -18,6 +18,7 @@
 #include "eeconfig.h"
 #include "progmem.h"
 #include "debug.h"
+#include "action_tapping.h"
 #ifdef DRV2605L
 #    include "DRV2605L.h"
 #endif
@@ -291,7 +292,33 @@ void haptic_play(void) {
 #endif
 }
 
+#ifndef HAPTIC_EXCLUSION_KEY_DEFAULT
+#define HAPTIC_EXCLUSION_DEFAULT(keycode, tapcount) ((((keycode) >= QK_MOD_TAP && (keycode) <= QK_MOD_TAP_MAX) && (tapcount == 0)) || (((keycode) >= QK_LAYER_TAP_TOGGLE && (keycode) <= QK_LAYER_TAP_TOGGLE_MAX) && (tapcount != TAPPING_TOGGLE)) || (((keycode) >= QK_LAYER_TAP && (keycode) <= QK_LAYER_TAP_MAX) && (tapcount == 0)) || (IS_MOD(keycode)) || ((keycode) >= QK_MOMENTARY && (keycode) <= QK_MOMENTARY_MAX))
+#else
+#define HAPTIC_EXCLUSION_DEFAULT(keycode, tapcount) false
+#endif
+
+#if (HAPTIC_EXCLUSION_KEYS != 0)
+bool exclude_haptic_key(uint16_t keycode, keyrecord_t *record) {
+    if ((HAPTIC_EXCLUSION_DEFAULT(keycode, record->tap.count))) {
+        return true;
+    } else {
+#ifdef HAPTIC_EXCLUSION_KEY_ADDITIONAL
+        static const uint16_t PROGMEM additional_keys[] = HAPTIC_EXCLUSION_KEY_ADDITIONAL;
+        int i = 0;
+        for (i = 0;i<sizeof(additional_keys)/sizeof(additional_keys[0]);i++) {
+            if (pgm_read_word(&additional_keys[i]) == keycode) {
+                return true;
+            }
+        }
+#endif
+        return false;
+    }
+}
+#endif
+
 bool process_haptic(uint16_t keycode, keyrecord_t *record) {
+    bool haptic_exclusion_key = false;
     if (keycode == HPT_ON && record->event.pressed) {
         haptic_enable();
     }
@@ -333,14 +360,19 @@ bool process_haptic(uint16_t keycode, keyrecord_t *record) {
     }
 
     if (haptic_config.enable) {
+        #if (HAPTIC_EXCLUSION_KEYS != 0)
+            if ( exclude_haptic_key(keycode, record)) {
+                haptic_exclusion_key = true;
+            }
+        #endif
         if (record->event.pressed) {
             // keypress
-            if (haptic_config.feedback < 2) {
+            if (haptic_config.feedback < 2 && haptic_exclusion_key == false) {
                 haptic_play();
             }
         } else {
             // keyrelease
-            if (haptic_config.feedback > 0) {
+            if (haptic_config.feedback > 0 && haptic_exclusion_key == false) {
                 haptic_play();
             }
         }
