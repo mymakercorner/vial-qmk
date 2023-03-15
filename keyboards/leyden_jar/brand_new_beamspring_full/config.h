@@ -44,7 +44,7 @@
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
 
-#define ACTIVATION_OFFSET   -10
+#define ACTIVATION_OFFSET   -30
 #define BEAMSPRING_KEYBOARD
 
 /* I2C EEPROM chip model used, if selected in rules.mk file */
