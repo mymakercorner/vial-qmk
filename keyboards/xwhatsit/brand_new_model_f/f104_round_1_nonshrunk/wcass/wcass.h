@@ -33,7 +33,7 @@
     k_tab,   k_q, k_w, k_e, k_r, k_t, k_y, k_u, k_i, k_o, k_p, k_squarebrop, k_squarebrcl,k_backspace,       k_del, k_end, k_pgdn,     k_kp7,k_kp8,k_kp9,       k_kpplus,\
     k_caps,   k_a, k_s, k_d, k_f, k_g, k_h, k_j, k_k, k_l, k_semicolon, k_singlequote, k_hashtag, k_return, k_ex1, k_ex2, k_ex3,      k_kp4,k_kp5,k_kp6,       k_kpplus2,\
     k_lshift, k_nonusbs, k_z, k_x, k_c, k_v, k_b, k_n, k_m, k_cm,k_period, k_forwardslash, k_rshift, k_fn,   k_ex4, k_up,  k_ex5,      k_kp1,k_kp2,k_kp3,       k_kpent,\
-    k_lctrl, k_lgui, k_lalt,         k_space,                     k_extra, k_ralt, k_menu, k_rctrl,           k_left,k_down,k_right,    k_kp0,k_kpx,k_kpdel,     k_kpent2\
+    k_lctrl, k_lgui, k_lalt,         k_space,                     k_extra, k_ralt, k_menu, k_rctrl,           k_left,k_down,k_right,    k_kpx,k_kp0,k_kpdel,     k_kpent2\
 ) \
 { \
     { k_lshift, k_a,        k_s,   k_f,  k_c,  k_j,   k_n,  k_semicolon,     k_period,       k_rshift,    k_return,   k_up,  k_ex5,             k_kp4,  k_kp2, k_kpent   }, \
