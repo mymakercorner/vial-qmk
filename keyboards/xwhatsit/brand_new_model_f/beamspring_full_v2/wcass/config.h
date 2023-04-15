@@ -288,7 +288,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SOLENOID_PIN B6
 // If you are not using a solenoid then comment out the above, and also in rules.mk, remove "HAPTIC_ENABLE += SOLENOID"
 // You can also tune the following for your solenoid:
-#define SOLENOID_DEFAULT_DWELL 4
+#define SOLENOID_DEFAULT_DWELL 20
 #define SOLENOID_MIN_DWELL 4
 //#define SOLENOID_MAX_DWELL 100
 #define NO_HAPTIC_MOD
