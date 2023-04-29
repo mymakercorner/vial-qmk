@@ -226,8 +226,6 @@ void leyden_jar_calibrate(int16_t activation_offset)
 
 void leyden_jar_update(void)
 {
-    io_expander_set_solenoid_enable_status(haptic_config.enable);
-
     io_expander_update_state();
 }
 

@@ -18,7 +18,11 @@
         "xstddef": "c",
         "type_traits": "c",
         "utility": "c",
-        "ranges": "c"
+        "ranges": "c",
+        "array": "c",
+        "vector": "c",
+        "xstring": "c",
+        "xutility": "c"
     },
     "[markdown]": {
         "editor.trimAutoWhitespace": false,

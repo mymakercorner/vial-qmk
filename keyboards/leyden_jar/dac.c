@@ -48,7 +48,7 @@ int dac_write_val(uint16_t dacVal)
     data[0] = (uint8_t)(dacVal >> 6);
     data[1] = (uint8_t)((dacVal << 2) & 0xFF);
 
-    volatile i2c_status_t ret = i2c_transmit(DAC_I2C_WRITE, data, 2, DAC_I2C_TIMEOUT);
+    i2c_status_t ret = i2c_transmit(DAC_I2C_WRITE, data, 2, DAC_I2C_TIMEOUT);
     if (ret != I2C_STATUS_SUCCESS)
         return 0;
     return 1;

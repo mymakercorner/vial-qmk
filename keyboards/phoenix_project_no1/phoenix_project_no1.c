@@ -1,4 +1,4 @@
-/* Copyright 2022 Eric Becourt (Rico https://mymakercorner.com)
+/* Copyright 2023 Eric Becourt (Rico https://mymakercorner.com)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,10 +14,4 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-int  io_expander_init(void);
-void io_expander_update_state(void);
-void io_expander_set_led0_status(bool enable);
-void io_expander_set_led1_status(bool enable);
-void io_expander_set_led2_status(bool enable);
+#include "phoenix_project_no1.h"

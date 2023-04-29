@@ -16,8 +16,13 @@
 
 #pragma once
 
-int  io_expander_init(void);
-void io_expander_update_state(void);
-void io_expander_set_led0_status(bool enable);
-void io_expander_set_led1_status(bool enable);
-void io_expander_set_led2_status(bool enable);
+/* Use 1000hz polling */
+#define USB_POLLING_INTERVAL_MS 1
+
+#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
+#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
+
+#define WS2812_PIO_USE_PIO1 // Force the usage of PIO1 peripheral, by default the WS2812 implementation uses the PIO0 peripheral
+
+// Dynamic EEPROM
+//#define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
