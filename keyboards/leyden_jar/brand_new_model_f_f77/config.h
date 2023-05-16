@@ -22,7 +22,7 @@
 * This allow for a more generic matrix scanning code that can be used by both F77 and F62 keyboards
 */
 #define MATRIX_ROWS 8
-#define MATRIX_COLS 16
+#define MATRIX_COLS 11
 
 /* Use 1000hz polling */
 #define USB_POLLING_INTERVAL_MS 1
@@ -41,13 +41,22 @@
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
+/* Use 1000hz polling */
+#define USB_POLLING_INTERVAL_MS 1
+
+#define I2C_DRIVER I2CD1
+#define I2C1_SDA_PIN GP16
+#define I2C1_SCL_PIN GP17
+#define I2C1_CLOCK_SPEED 400000
+
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
 
+#define BOARD_MODEL F77
+
 #define ACTIVATION_OFFSET   10
 
-/* I2C EEPROM chip model used, if selected in rules.mk file */
-//#define EEPROM_I2C_CAT24C512
+#define CONTROLLER_ROWS     8
+#define CONTROLLER_COLS     16
 
-// Dynamic EEPROM
-//#define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
+#define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095

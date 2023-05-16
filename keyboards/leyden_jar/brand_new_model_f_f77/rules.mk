@@ -34,6 +34,6 @@ EEPROM_DRIVER = wear_leveling
 WEAR_LEVELING_DRIVER = rp2040_flash
 
 OPT_DEFS += -DSOLENOID_ENABLE # this is to trick QMK haptic code management that there is a solenoid driver defined
-SRC += keyboards/leyden_jar/matrix.c keyboards/leyden_jar/dac.c keyboards/leyden_jar/common.c keyboards/leyden_jar/pio_matrix_scan.c
-SRC += keyboards/leyden_jar/io_expander.c keyboards/leyden_jar/solenoid.c keyboards/leyden_jar/leds.c
+SRC += ../matrix.c ../dac.c ../common.c ../pio_matrix_scan.c
+SRC += ../io_expander.c ../solenoid.c ../leds.c
 QUANTUM_LIB_SRC += i2c_master.c

@@ -26,8 +26,8 @@ extern haptic_config_t haptic_config;
 
 #define UNCONNECTED_LEVEL 380
 
-static uint16_t s_matrix_levels[MATRIX_COLS][MATRIX_ROWS];
-static uint16_t s_sorted_levels[MATRIX_COLS * MATRIX_ROWS];
+static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
+static uint16_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
 static uint16_t s_dac_threshold;
 
 enum leyden_jar_keyboard_value_id {
@@ -52,12 +52,12 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length)
             case id_leyden_jar_col_levels:
             {
                 uint16_t col_index = *(uint16_t *)(data + 2);
-                if (col_index >= MATRIX_COLS) {
+                if (col_index >= CONTROLLER_COLS) {
                     *command_id = id_unhandled;
                 }
                 else {
                     uint16_t *col_level_ptr = (uint16_t *)(data + 4);
-                    for (int i=0; i<MATRIX_ROWS; i++) {
+                    for (int i=0; i<CONTROLLER_ROWS; i++) {
                         col_level_ptr[i] = s_matrix_levels[col_index][i];
                     }
                 }
@@ -129,8 +129,8 @@ static void leyden_jar_detect_levels(void) {
 
         const uint8_t* p_raw_vals = pio_get_scan_vals();
 
-        for (int col = 0; col < MATRIX_COLS; col++) {
-            for (int row = 0; row < MATRIX_ROWS; row++) {
+        for (int col = 0; col < CONTROLLER_COLS; col++) {
+            for (int row = 0; row < CONTROLLER_ROWS; row++) {
                 if (p_raw_vals[col] & (uint8_t)(1<<row)) {
                     s_matrix_levels[col][row] = dac_val;
                 }
@@ -153,13 +153,13 @@ static int leyden_jar_compare_vals(const void* pVal1, const void* pVal2) {
 }
 
 static void leyden_jar_sort_level_values(void) {
-    for (int col = 0; col < MATRIX_COLS; col++) {
-        for (int row = 0; row < MATRIX_ROWS; row++) {
-            s_sorted_levels[col * MATRIX_ROWS + row] = s_matrix_levels[col][row];
+    for (int col = 0; col < CONTROLLER_COLS; col++) {
+        for (int row = 0; row < CONTROLLER_ROWS; row++) {
+            s_sorted_levels[col * CONTROLLER_ROWS + row] = s_matrix_levels[col][row];
         }
     }
 
-    qsort((void*)s_sorted_levels, MATRIX_COLS * MATRIX_ROWS, sizeof(uint16_t), leyden_jar_compare_vals);
+    qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(uint16_t), leyden_jar_compare_vals);
 }
 
 /* We compute the threshold to were we consider that a key has been pressed.
@@ -193,8 +193,8 @@ static void leyden_jar_sort_level_values(void) {
  *     - Consequently allows to use QMK BOOT_MAGIC lite feature. */
 
 static void leyden_jar_compute_dac_threshold(int16_t activation_offset) {
-    uint16_t median_val = s_sorted_levels[MATRIX_COLS * MATRIX_ROWS / 2];
-    uint16_t max_val = s_sorted_levels[(MATRIX_COLS * MATRIX_ROWS) - 1];
+    uint16_t median_val = s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS / 2];
+    uint16_t max_val = s_sorted_levels[(CONTROLLER_COLS * CONTROLLER_ROWS) - 1];
 
     if (max_val <= UNCONNECTED_LEVEL) {
         if (activation_offset > 0) {
