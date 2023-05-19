@@ -27,30 +27,27 @@
 //{
 //    5, 6, 4, 7, 3, 2, 1, 0
 //};
-
-#if BOARD_MODEL == F77
-static const uint8_t s_universalToPhysicalCol[18] =
-{
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255
-};
-static const uint8_t s_universalToPhysicalRow[8] =
-{
-    7, 6, 5, 4, 2, 0, 1, 3
-};
-
-
-#define UNIVERSAL_TO_PHYSICAL_COL(col) s_universalToPhysicalCol[col]
-#define UNIVERSAL_TO_PHYSICAL_ROW(row) s_universalToPhysicalRow[row]
-
-#else
-
-#define UNIVERSAL_TO_PHYSICAL_COL(col) col
-#define UNIVERSAL_TO_PHYSICAL_ROW(row) row
-
-#endif
-
 //#define PHYSICAL_TO_UNIVERSAL_COL(col) s_physicalToUniversalCol[col]
 //#define PHYSICAL_TO_UNIVERSAL_ROW(row) s_physicalToUniversalRow[row]
+
+#if MATRIX_FORMAT == UNIVERSAL
+
+    #if BOARD_MODEL == F77 || BOARD_MODEL == F62
+
+    static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
+    static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
+
+    #define MATRIX_TO_CONTROLLER_COL(col) s_matrixToControllerCol[col]
+    #define MATRIX_TO_CONTROLLER_ROW(row) s_matrixToControllerRow[row]
+
+    #endif
+
+#elif MATRIX_FORMAT == NATIVE
+
+    #define MATRIX_TO_CONTROLLER_COL(col) col
+    #define MATRIX_TO_CONTROLLER_ROW(row) row
+
+#endif
 
 matrix_row_t s_previous_matrix[MATRIX_ROWS];
 
@@ -75,9 +72,9 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
     }
 
     for (int col = 0; col < MATRIX_COLS; col++) {
-        int physCol = (int)UNIVERSAL_TO_PHYSICAL_COL(col);
+        int physCol = (int)MATRIX_TO_CONTROLLER_COL(col);
         for (int row = 0; row < MATRIX_ROWS; row++) {
-            int physicalRow = (int)UNIVERSAL_TO_PHYSICAL_ROW(row);
+            int physicalRow = (int)MATRIX_TO_CONTROLLER_ROW(row);
             matrix_row_t rowVal = (matrix_row_t)((p_raw_vals[physCol] >> physicalRow) & 1);
             #ifdef BEAMSPRING_KEYBOARD
                 rowVal = (~rowVal) & 1;

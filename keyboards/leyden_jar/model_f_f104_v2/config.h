@@ -41,20 +41,23 @@
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
+/* Use 1000hz polling */
+#define USB_POLLING_INTERVAL_MS 1
+
+#define I2C_DRIVER I2CD1
+#define I2C1_SDA_PIN GP16
+#define I2C1_SCL_PIN GP17
+#define I2C1_CLOCK_SPEED 400000
+
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
 
-#define ACTIVATION_OFFSET   -30
-#define BEAMSPRING_KEYBOARD
+#define MATRIX_FORMAT NATIVE
+#define BOARD_MODEL F104V2
+
+#define ACTIVATION_OFFSET   10
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
 
-#define MATRIX_FORMAT   NATIVE
-#define BOARD_MODEL BEAMSPRING_FULL_V2
-
-/* I2C EEPROM chip model used, if selected in rules.mk file */
-//#define EEPROM_I2C_CAT24C512
-
-// Dynamic EEPROM
 #define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095

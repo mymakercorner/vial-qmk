@@ -11,6 +11,10 @@
     "maintainer": "Rico",
     "width": 23,
     "height": 6.5,
+    "matrix_size": {
+        "cols": 16,
+        "rows": 8
+    }
      "layouts": {
         "LAYOUT_all": {
             "layout": [
