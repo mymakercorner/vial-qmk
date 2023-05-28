@@ -30,9 +30,9 @@
 //#define PHYSICAL_TO_UNIVERSAL_COL(col) s_physicalToUniversalCol[col]
 //#define PHYSICAL_TO_UNIVERSAL_ROW(row) s_physicalToUniversalRow[row]
 
-#if MATRIX_FORMAT == UNIVERSAL
+#if defined(MATRIX_FORMAT_IS_UNIVERSAL)
 
-    #if BOARD_MODEL == F77 || BOARD_MODEL == F62
+    #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
     static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
@@ -42,7 +42,7 @@
 
     #endif
 
-#elif MATRIX_FORMAT == NATIVE
+#elif defined(MATRIX_FORMAT_IS_NATIVE)
 
     #define MATRIX_TO_CONTROLLER_COL(col) col
     #define MATRIX_TO_CONTROLLER_ROW(row) row

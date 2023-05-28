@@ -52,8 +52,8 @@
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
 
-#define MATRIX_FORMAT UNIVERSAL
-#define BOARD_MODEL F77
+#define MATRIX_FORMAT_IS_UNIVERSAL
+#define BOARD_MODEL_IS_F77
 
 #define ACTIVATION_OFFSET   10
 
