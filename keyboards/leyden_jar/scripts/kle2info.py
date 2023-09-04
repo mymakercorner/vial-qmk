@@ -21,27 +21,30 @@ currentY = 0
 for row in kleJson:
     currentX = 0
     currentW = 1
-    
-    for elem in row:
-        if type(elem) is dict:
-            currentX += elem.get("x", 0)
-            currentY += elem.get("y", 0)
-            currentW = elem.get("w", 1)
-        else:
-            rowColString = elem.split(",")
-            x = int(rowColString[0])    
-            y = int(rowColString[1])
-            infoElem = dict()
-            infoElem["matrix"] = [x, y]
-            if currentW != 1:
-                infoElem["w"] = currentW
-            infoElem["x"] = currentX
-            infoElem["y"] = currentY
-            info.append(infoElem)
-            currentX += currentW
-            currentW = 1
-    
-    currentY += 1
+    if type(row) is not dict:
+        for elem in row:
+            if type(elem) is str or elem.get("a") is None:
+                if type(elem) is dict:
+                    currentX += elem.get("x", 0)
+                    currentY += elem.get("y", 0)
+                    currentW = elem.get("w", 1)
+                else:
+                    rowColString = elem.split(",")
+                    x = 255
+                    y = 255
+                    if len(rowColString) == 2:
+                        x = int(rowColString[0])    
+                        y = int(rowColString[1])
+                    infoElem = dict()
+                    infoElem["matrix"] = [x, y]
+                    if currentW != 1:
+                        infoElem["w"] = currentW
+                    infoElem["x"] = currentX
+                    infoElem["y"] = currentY
+                    info.append(infoElem)
+                    currentX += currentW
+                    currentW = 1
+        currentY += 1
 
 try:
     f = open(sys.argv[2], "w")
