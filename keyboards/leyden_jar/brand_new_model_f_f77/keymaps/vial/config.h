@@ -7,8 +7,8 @@
 #define VIAL_UNLOCK_COMBO_COLS {0, 1}
 
 /* Space is the bootmagic key */
-#define BOOTMAGIC_LITE_ROW 0
-#define BOOTMAGIC_LITE_COLUMN 3
+#define BOOTMAGIC_LITE_ROW 1
+#define BOOTMAGIC_LITE_COLUMN 0
 
 #define HAPTIC_OFF_IN_LOW_POWER 1
 #define NO_HAPTIC_MOD

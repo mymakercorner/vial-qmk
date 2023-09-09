@@ -25,7 +25,7 @@
 * Only the generic 'all layouts' as defined in the VIA json file is defined here.
 * Please use VIA/VIAL software to select the layout options you want.
 */
-
+/*
 #define LAYOUT_all( \
     k_grv,    k_1,    k_2,    k_3,    k_4, k_5, k_6, k_7, k_8, k_9,     k_0,         k_minus,   k_equals,  k_bslash, k_backsp, k_kp7, k_kp8, k_kp9,\
     k_tab,    k_q,    k_w,    k_e,    k_r, k_t, k_y, k_u, k_i, k_o,     k_p,         k_lbrc,    k_rbrc,    k_backspace,        k_kp4, k_kp5, k_kp6,\
@@ -43,3 +43,4 @@
     { k_grv   , k_q   , k_3, k_5    , k_7, k_9        , k_minus  , KC_NO    , KC_NO  , k_kp8  , KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO  },\
     { k_1     , k_2   , k_4, k_6    , k_8, k_0        , k_equals , k_backsp , k_kp7  , k_kp9  , KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO  }\
 }
+*/

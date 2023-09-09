@@ -48,5 +48,14 @@
 #define ACTIVATION_OFFSET   -30
 #define BEAMSPRING_KEYBOARD
 
+#define CONTROLLER_ROWS     8
+#define CONTROLLER_COLS     16
+
+#define MATRIX_FORMAT   NATIVE
+#define BOARD_MODEL BEAMSPRING_FULL_V2
+
+/* I2C EEPROM chip model used, if selected in rules.mk file */
+//#define EEPROM_I2C_CAT24C512
+
 // Dynamic EEPROM
 #define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
