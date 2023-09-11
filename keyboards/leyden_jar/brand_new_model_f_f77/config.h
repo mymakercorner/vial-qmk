@@ -31,7 +31,7 @@
  * It is used to drive the the DAC chip that gives the voltage theshold value for the capsense management
  * and the IO expander thats drives the status leds.
 */
-#define I2C_DRIVER I2CD1
+#define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP16
 #define I2C1_SCL_PIN GP17
 #define I2C1_CLOCK_SPEED 400000
@@ -44,11 +44,6 @@
 
 /* Use 1000hz polling */
 #define USB_POLLING_INTERVAL_MS 1
-
-#define I2C_DRIVER I2CD1
-#define I2C1_SDA_PIN GP16
-#define I2C1_SCL_PIN GP17
-#define I2C1_CLOCK_SPEED 400000
 
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
