@@ -30,7 +30,9 @@
     },
     "python.formatting.provider": "yapf",
     "[json]": {
-	    "editor.formatOnSave": false
+        "editor.formatOnSave": false
     },
-    "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools"
+    "clangd.arguments": [
+        "--header-insertion=never"
+    ]
 }
