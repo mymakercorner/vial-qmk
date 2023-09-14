@@ -8,47 +8,46 @@
 #include "hardware/pio.h"
 #endif
 
-// ------------ //
-// col_8_15_pio //
-// ------------ //
+// ------------- //
+// col_16_17_pio //
+// ------------- //
 
-#define col_8_15_pio_wrap_target 0
-#define col_8_15_pio_wrap 10
+#define col_16_17_pio_wrap_target 0
+#define col_16_17_pio_wrap 9
 
-static const uint16_t col_8_15_pio_program_instructions[] = {
+static const uint16_t col_16_17_pio_program_instructions[] = {
             //     .wrap_target
-    0x20c0, //  0: wait   1 irq, 0
-    0xe027, //  1: set    x, 7
-    0x6808, //  2: out    pins, 8                [8]
+    0x20c1, //  0: wait   1 irq, 1
+    0xe021, //  1: set    x, 1
+    0x6802, //  2: out    pins, 2                [8]
     0x5b08, //  3: in     pins, 8                [27]
     0xbf42, //  4: nop                           [31]
     0xbf42, //  5: nop                           [31]
-    0x7f08, //  6: out    pins, 8                [31]
+    0x7f02, //  6: out    pins, 2                [31]
     0xec47, //  7: set    y, 7                   [12]
     0x1f88, //  8: jmp    y--, 8                 [31]
     0x0042, //  9: jmp    x--, 2
-    0xc001, // 10: irq    nowait 1
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
-static const struct pio_program col_8_15_pio_program = {
-    .instructions = col_8_15_pio_program_instructions,
-    .length = 11,
+static const struct pio_program col_16_17_pio_program = {
+    .instructions = col_16_17_pio_program_instructions,
+    .length = 10,
     .origin = -1,
 };
 
-static inline pio_sm_config col_8_15_pio_program_get_default_config(uint offset) {
+static inline pio_sm_config col_16_17_pio_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + col_8_15_pio_wrap_target, offset + col_8_15_pio_wrap);
+    sm_config_set_wrap(&c, offset + col_16_17_pio_wrap_target, offset + col_16_17_pio_wrap);
     return c;
 }
 
-static inline void col_8_15_pio_init(PIO pio, uint sm, uint offset, uint inPin, uint outPin) {
-    pio_sm_config c = col_8_15_pio_program_get_default_config(offset);
+static inline void col_16_17_pio_init(PIO pio, uint sm, uint offset, uint inPin, uint outPin) {
+    pio_sm_config c = col_16_17_pio_program_get_default_config(offset);
     // Out pins configuration
-    sm_config_set_out_pins(&c, outPin, 8);
-    for (uint i=0; i<8; i++)
+    sm_config_set_out_pins(&c, outPin, 2);
+    for (uint i=0; i<2; i++)
         pio_gpio_init(pio, outPin + i);
     // In pins configuration
     sm_config_set_in_pins(&c, inPin);
@@ -58,9 +57,9 @@ static inline void col_8_15_pio_init(PIO pio, uint sm, uint offset, uint inPin, 
     float div = ((float)clock_get_hz(clk_sys)) / (10.f*1000.f*1000.f);
     sm_config_set_clkdiv(&c, div);
     // Initializes TX/RX fifos
-    sm_config_set_out_shift(&c, true, true, 32);
-    sm_config_set_in_shift(&c, true, true, 32);
-    pio_sm_set_consecutive_pindirs(pio, sm, outPin, 8, true);
+    sm_config_set_out_shift(&c, true, true, 8);
+    sm_config_set_in_shift(&c, true, true, 16);
+    pio_sm_set_consecutive_pindirs(pio, sm, outPin, 2, true);
     // Clear IRQ flag before starting, and make sure flag doesn't actually
     // assert a system-level interrupt (we're using it as a status flag)
     // Init and start the state machine

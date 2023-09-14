@@ -114,7 +114,7 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length)
 
 
 static void leyden_jar_detect_levels(void) {
-    for (int col = 0; col < 16; col++) {
+    for (int col = 0; col < CONTROLLER_COLS; col++) {
         for (int row=0; row<8; row++) {
             s_matrix_levels[col][row] = 0;
         }
@@ -210,7 +210,7 @@ static void leyden_jar_compute_dac_threshold(int16_t activation_offset) {
 void leyden_jar_init(void) {
     dac_init();
     io_expander_init();
-    pio_matrix_scan_init();
+    pio_matrix_scan_init(CONTROLLER_COLS == 18);
 }
 
 void leyden_jar_calibrate(int16_t activation_offset)

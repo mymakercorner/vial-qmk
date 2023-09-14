@@ -4,6 +4,10 @@
 
 #pragma once
 
+#if !PICO_NO_HARDWARE
+#include "hardware/pio.h"
+#endif
+
 // ----------- //
 // col_0_7_pio //
 // ----------- //
@@ -26,6 +30,7 @@ static const uint16_t col_0_7_pio_program_instructions[] = {
             //     .wrap
 };
 
+#if !PICO_NO_HARDWARE
 static const struct pio_program col_0_7_pio_program = {
     .instructions = col_0_7_pio_program_instructions,
     .length = 10,
@@ -56,8 +61,11 @@ static inline void col_0_7_pio_init(PIO pio, uint sm, uint offset, uint inPin, u
     sm_config_set_out_shift(&c, true, true, 32);
     sm_config_set_in_shift(&c, true, true, 32);
     pio_sm_set_consecutive_pindirs(pio, sm, outPin, 8, true);
-    // Init the state machine
+    // Clear IRQ flag before starting, and make sure flag doesn't actually
+    // assert a system-level interrupt (we're using it as a status flag)
+    // Init and start the state machine
     pio_sm_init(pio, sm, offset, &c);
 }
 
+#endif
 

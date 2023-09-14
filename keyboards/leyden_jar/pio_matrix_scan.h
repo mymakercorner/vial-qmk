@@ -16,6 +16,6 @@
 
 #pragma once
 
-void pio_matrix_scan_init(void);
+void pio_matrix_scan_init(bool enable_extra_cols);
 void pio_raw_scan(void);
 const uint8_t* pio_get_scan_vals(void);
