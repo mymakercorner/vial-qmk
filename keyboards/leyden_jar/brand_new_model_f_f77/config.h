@@ -16,17 +16,6 @@
 
 #pragma once
 
-/*
-* Key matrix size
-* Although columns 10 to 14 are not used by the F77 keyboard we define all 16 columns here.
-* This allow for a more generic matrix scanning code that can be used by both F77 and F62 keyboards
-*/
-#define MATRIX_ROWS 8
-#define MATRIX_COLS 11
-
-/* Use 1000hz polling */
-#define USB_POLLING_INTERVAL_MS 1
-
 /* RP2040 I2C device 0 is used by QMK API.
  * It is used to drive the the DAC chip that gives the voltage theshold value for the capsense management
  * and the IO expander thats drives the status leds.
@@ -38,22 +27,14 @@
 
 #define HAPTIC_ENABLE_PIN GP28
 #define SOLENOID_PIN GP29
-#define SOLENOID_DEFAULT_DWELL 15
+#define SOLENOID_DEFAULT_DWELL 20
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
-/* Use 1000hz polling */
-#define USB_POLLING_INTERVAL_MS 1
-
-#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
-#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
-
-#define MATRIX_FORMAT_IS_UNIVERSAL
+#define MATRIX_FORMAT_XWHATSIT
 #define BOARD_MODEL_IS_F77
 
 #define ACTIVATION_OFFSET   10
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
-
-#define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095

@@ -19,18 +19,7 @@
 #include "pio_matrix_scan.h"
 #include "io_expander.h"
 
-//static const uint8_t s_physicalToUniversalCol[18] =
-//{
-//    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 255, 255, 255, 255, 255, 10, 255, 255
-//};
-//static const uint8_t s_physicalToUniversalRow[8] =
-//{
-//    5, 6, 4, 7, 3, 2, 1, 0
-//};
-//#define PHYSICAL_TO_UNIVERSAL_COL(col) s_physicalToUniversalCol[col]
-//#define PHYSICAL_TO_UNIVERSAL_ROW(row) s_physicalToUniversalRow[row]
-
-#if defined(MATRIX_FORMAT_IS_UNIVERSAL)
+#if defined(MATRIX_FORMAT_XWHATSIT)
 
     #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
@@ -39,19 +28,10 @@
 
     #endif
 
-#elif defined(MATRIX_FORMAT_IS_NATIVE)
-
-#if 0
-
-    static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
-    static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 3, 2, 1, 0 };
-
-#else
+#elif defined(MATRIX_FORMAT_LEYDEN_JAR)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
     static const uint8_t s_matrixToControllerRow[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
-
-#endif
 
 #endif
 

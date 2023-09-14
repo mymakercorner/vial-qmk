@@ -22,8 +22,6 @@
 #include "io_expander.h"
 #include "pio_matrix_scan.h"
 
-extern haptic_config_t haptic_config;
-
 #define UNCONNECTED_LEVEL 380
 
 static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
