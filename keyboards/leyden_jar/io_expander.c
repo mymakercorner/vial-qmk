@@ -22,9 +22,9 @@
 #define IO_EXPANDER_I2C_WRITE   (IO_EXPANDER_I2C_ADDR | 0)
 #define IO_EXPANDER_I2C_TIMEOUT 100
 
-#define SOLENOID_LED0_VAL   (1<<4)
-#define SOLENOID_LED1_VAL   (1<<5)
-#define SOLENOID_LED2_VAL   (1<<6)
+#define IO_EXPANDER_LED0   (1<<4)
+#define IO_EXPANDER_LED1   (1<<5)
+#define IO_EXPANDER_LED2   (1<<6)
 
 static uint8_t s_current_io_expander_state;
 static bool s_led0;
@@ -95,13 +95,13 @@ void io_expander_update_state(void) {
     uint8_t new_state = 0;
 
     if (s_led0) {
-        new_state |= SOLENOID_LED0_VAL;
+        new_state |= IO_EXPANDER_LED0;
     }
     if (s_led1) {
-        new_state |= SOLENOID_LED1_VAL;
+        new_state |= IO_EXPANDER_LED1;
     }
     if (s_led2) {
-        new_state |= SOLENOID_LED2_VAL;
+        new_state |= IO_EXPANDER_LED2;
     }
 
     if (new_state != s_current_io_expander_state)
