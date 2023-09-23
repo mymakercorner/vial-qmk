@@ -27,91 +27,26 @@
 static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
 static uint16_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
 static uint16_t s_dac_threshold;
+static bool s_is_keyboard_enabled;
 
-enum leyden_jar_keyboard_value_id {
-  id_leyden_jar_offset = 0x80, //Sufficiently high value to be safe to use
-  id_leyden_jar_col_levels,
-  id_leyden_jar_dac_threshold
-};
+#if defined(MATRIX_FORMAT_XWHATSIT)
 
-#ifdef VIA_ENABLE
-void raw_hid_receive_kb(uint8_t *data, uint8_t length)
-{
-  uint8_t *command_id = &(data[0]);
+    #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
-  switch ( *command_id )
-  {
-    case id_get_keyboard_value:
-    {
-        uint8_t *command_data = &(data[1]);
+    static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
+    static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
 
-        switch( command_data[0])
-        {
-            case id_leyden_jar_col_levels:
-            {
-                uint16_t col_index = *(uint16_t *)(data + 2);
-                if (col_index >= CONTROLLER_COLS) {
-                    *command_id = id_unhandled;
-                }
-                else {
-                    uint16_t *col_level_ptr = (uint16_t *)(data + 4);
-                    for (int i=0; i<CONTROLLER_ROWS; i++) {
-                        col_level_ptr[i] = s_matrix_levels[col_index][i];
-                    }
-                }
-                break;
-            }
-            case id_leyden_jar_dac_threshold:
-            {
-                uint16_t *threshold_ptr = (uint16_t *)(data + 2);
-                *threshold_ptr = s_dac_threshold;
-                break;
-            }
-            default:
-            {
-                *command_id = id_unhandled;
-                break;
-            }
-        }
-        break;
-    }
-    case id_set_keyboard_value:
-    {
-        uint8_t *command_data = &(data[1]);
+    #endif
 
-        switch( command_data[0])
-        {
-            case id_leyden_jar_dac_threshold:
-            {
-                uint16_t threshold = *(uint16_t *)(data + 2);
-                if (threshold > 1023) {
-                    *command_id = id_unhandled;
-                }
-                else {
-                    s_dac_threshold = threshold;
-                    dac_write_val(s_dac_threshold);
-                    wait_us(100);
-                }
-                break;
-            }
-            default:
-            {
-                *command_id = id_unhandled;
-                break;
-            }
-        }
-        break;
-    }
-    default:
-    {
-      // Unhandled message.
-      *command_id = id_unhandled;
-      break;
-    }
-  }
-}
+#elif defined(MATRIX_FORMAT_LEYDEN_JAR)
+
+    static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
+    static const uint8_t s_matrixToControllerRow[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+
 #endif
 
+#define MATRIX_TO_CONTROLLER_COL(col) s_matrixToControllerCol[col]
+#define MATRIX_TO_CONTROLLER_ROW(row) s_matrixToControllerRow[row]
 
 static void leyden_jar_detect_levels(void) {
     for (int col = 0; col < CONTROLLER_COLS; col++) {
@@ -120,7 +55,7 @@ static void leyden_jar_detect_levels(void) {
         }
     }
 
-    for (uint16_t dac_val=300; dac_val < 500; dac_val++) {
+    for (uint16_t dac_val=350; dac_val < 500; dac_val++) {
         dac_write_val(dac_val);
         wait_us(100);
         pio_raw_scan();
@@ -211,10 +146,11 @@ void leyden_jar_init(void) {
     dac_init();
     io_expander_init();
     pio_matrix_scan_init(CONTROLLER_COLS == 18);
+
+    s_is_keyboard_enabled = true;
 }
 
-void leyden_jar_calibrate(int16_t activation_offset)
-{
+void leyden_jar_calibrate(int16_t activation_offset) {
     leyden_jar_detect_levels();
     leyden_jar_sort_level_values();
     leyden_jar_compute_dac_threshold(activation_offset);
@@ -222,8 +158,116 @@ void leyden_jar_calibrate(int16_t activation_offset)
     wait_us(100);
 }
 
-void leyden_jar_update(void)
-{
+void leyden_jar_update(void) {
     io_expander_update_state();
 }
 
+void leyden_jar_enable(bool enable) {
+    s_is_keyboard_enabled = enable;
+}
+
+bool leyden_jar_is_enabled() {
+    return s_is_keyboard_enabled;
+}
+
+void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
+    pio_raw_scan();
+    const uint8_t* p_raw_vals = pio_get_scan_vals();
+
+    for (int row = 0; row < MATRIX_ROWS; row++) {
+        current_matrix[row] = 0;
+    }
+
+    for (int col = 0; col < MATRIX_COLS; col++) {
+        int physCol = (int)MATRIX_TO_CONTROLLER_COL(col);
+        for (int row = 0; row < MATRIX_ROWS; row++) {
+            int physicalRow = (int)MATRIX_TO_CONTROLLER_ROW(row);
+            matrix_row_t rowVal = (matrix_row_t)((p_raw_vals[physCol] >> physicalRow) & 1);
+            #ifdef BEAMSPRING_KEYBOARD
+                rowVal = (~rowVal) & 1;
+            #endif
+            rowVal = rowVal << col;
+            current_matrix[row] |= rowVal;
+        }
+    }
+}
+
+const uint8_t* leyden_jar_physical_matrix_scan() {
+    pio_raw_scan();
+    return pio_get_scan_vals();
+}
+
+bool leyden_jar_set_detect_levels() {
+    leyden_jar_detect_levels();
+
+    return true;
+}
+
+bool leyden_jar_get_column_levels(uint16_t col_index, uint16_t* level_buffer_ptr, uint16_t level_buffer_size) {
+    if (col_index >= CONTROLLER_COLS || level_buffer_size < CONTROLLER_ROWS) {
+        return false;
+    }
+
+    for (int i=0; i<CONTROLLER_ROWS; i++) {
+        level_buffer_ptr[i] = s_matrix_levels[col_index][i];
+    }
+
+    return true;
+}
+
+bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr) {
+    *dac_threshold_ptr = s_dac_threshold;
+    return true;
+}
+
+bool leyden_jar_set_dac_threshold(uint16_t dac_threshold) {
+    if (dac_threshold > 1023) {
+        return false;
+    }
+
+    s_dac_threshold = dac_threshold;
+    dac_write_val(s_dac_threshold);
+    wait_us(100);
+
+    return true;
+}
+
+bool leyden_jar_set_enable_keyboard(uint8_t enable) {
+    leyden_jar_enable(enable != 0);
+
+    return true;
+}
+
+bool leyden_jar_get_enable_keyboard(uint8_t* is_enabled) {
+    *is_enabled = ( leyden_jar_is_enabled() == true ) ? 1 : 0;
+
+    return true;
+}
+
+bool leyden_jar_get_logical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size) {
+    if (scan_buffer_size < MATRIX_ROWS * sizeof(matrix_row_t)) {
+        return false;
+    }
+
+    leyden_jar_logical_matrix_scan((matrix_row_t*) scan_ptr);
+
+    return true;
+}
+
+bool leyden_jar_get_physical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size) {
+    if (scan_buffer_size < CONTROLLER_COLS) {
+        return false;
+    }
+
+    const uint8_t* raw_scan_ptr = leyden_jar_physical_matrix_scan();
+    memcpy(scan_ptr, raw_scan_ptr, CONTROLLER_COLS);
+
+    return true;
+}
+
+
+void via_init_kb(void) {
+    if (!via_eeprom_is_valid()) {
+        eeconfig_disable();
+    }
+}

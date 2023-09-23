@@ -19,3 +19,16 @@
 void leyden_jar_init(void);
 void leyden_jar_calibrate(int16_t activation_offseet);
 void leyden_jar_update(void);
+void leyden_jar_enable(bool enable);
+bool leyden_jar_is_enabled(void);
+void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]);
+const uint8_t* leyden_jar_physical_matrix_scan(void);
+
+bool leyden_jar_set_detect_levels(void);
+bool leyden_jar_get_column_levels(uint16_t col_index, uint16_t* level_buffer_ptr, uint16_t level_buffer_size);
+bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr);
+bool leyden_jar_set_dac_threshold(uint16_t dac_threshold);
+bool leyden_jar_set_enable_keyboard(uint8_t enable);
+bool leyden_jar_get_enable_keyboard(uint8_t* is_enabled);
+bool leyden_jar_get_logical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size);
+bool leyden_jar_get_physical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size);

@@ -22,19 +22,18 @@
 #define DAC_I2C_WRITE    (DAC_I2C_ADDR | 0)
 #define DAC_I2C_TIMEOUT 100
 
-int dac_init(void)
-{
+int dac_init(void) {
     i2c_init();
 
     uint8_t dummy;
     i2c_status_t ret = i2c_receive(DAC_I2C_READ, &dummy, 1, DAC_I2C_TIMEOUT);
-    if (ret != I2C_STATUS_SUCCESS)
+    if (ret != I2C_STATUS_SUCCESS) {
         return 0;
+    }
     return 1;
 }
 
-int dac_write_val(uint16_t dacVal)
-{
+int dac_write_val(uint16_t dacVal) {
     // Write Volatile DAC Register command is 2 bytes
     // First byte contains(MSb first):
     // - 2 bits for command type (both 0 for write volatile DAC register command)
@@ -49,7 +48,8 @@ int dac_write_val(uint16_t dacVal)
     data[1] = (uint8_t)((dacVal << 2) & 0xFF);
 
     i2c_status_t ret = i2c_transmit(DAC_I2C_WRITE, data, 2, DAC_I2C_TIMEOUT);
-    if (ret != I2C_STATUS_SUCCESS)
+    if (ret != I2C_STATUS_SUCCESS) {
         return 0;
+    }
     return 1;
 }

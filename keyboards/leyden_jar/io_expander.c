@@ -40,8 +40,9 @@ static int io_expander_set_output_pins_level(uint8_t pins_level) {
     write_data[1] = pins_level;
 
     i2c_status_t ret = i2c_transmit(IO_EXPANDER_I2C_WRITE, write_data, 2, IO_EXPANDER_I2C_TIMEOUT);
-    if (ret != I2C_STATUS_SUCCESS)
+    if (ret != I2C_STATUS_SUCCESS) {
         return 0;
+    }
 
     return 1;
 }
@@ -53,8 +54,9 @@ int io_expander_init()
     /* We check that the I2C device is recognized */
     uint8_t dummy;
     i2c_status_t ret = i2c_receive(IO_EXPANDER_I2C_READ, &dummy, 1, IO_EXPANDER_I2C_TIMEOUT);
-    if (ret != I2C_STATUS_SUCCESS)
+    if (ret != I2C_STATUS_SUCCESS) {
         return 0;
+    }
 
     /* We set all pins to output type
      * Write Control Register command is 2 bytes
@@ -64,12 +66,14 @@ int io_expander_init()
     write_data[0] = 0x03;
     write_data[1] = 0x00;
     ret = i2c_transmit(IO_EXPANDER_I2C_WRITE, write_data, 2, IO_EXPANDER_I2C_TIMEOUT);
-    if (ret != I2C_STATUS_SUCCESS)
+    if (ret != I2C_STATUS_SUCCESS) {
         return 0;
+    }
 
     /* We set all pins to output 0 */
-    if (io_expander_set_output_pins_level(0) != 1)
+    if (io_expander_set_output_pins_level(0) != 1) {
         return 0;
+    }
 
     s_current_io_expander_state = 0;
     s_led0 = false;
@@ -104,8 +108,7 @@ void io_expander_update_state(void) {
         new_state |= IO_EXPANDER_LED2;
     }
 
-    if (new_state != s_current_io_expander_state)
-    {
+    if (new_state != s_current_io_expander_state) {
         s_current_io_expander_state = new_state;
         io_expander_set_output_pins_level(s_current_io_expander_state);
     }

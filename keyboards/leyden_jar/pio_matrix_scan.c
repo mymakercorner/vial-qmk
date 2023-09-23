@@ -38,8 +38,7 @@ const uint32_t s_TxCol2ScanData = ((1 << 0) | (2 << 4));
 static uint8_t s_RawMatrixScanValues[18];
 static bool s_enable_extra_cols;
 
-void pio_matrix_scan_init(bool enable_extra_cols)
-{
+void pio_matrix_scan_init(bool enable_extra_cols) {
     s_enable_extra_cols = enable_extra_cols;
 
     /* Get PIO0 peripheral out of reset state. */
@@ -94,8 +93,7 @@ void pio_matrix_scan_init(bool enable_extra_cols)
     }
 }
 
-void pio_raw_scan()
-{
+void pio_raw_scan() {
     /* We push FIFO data to the PIO state machine that handles column 16 to 17 first,
      that is the state machine that runs the col_16_17_pio program.
      As this program waits col_8_15_pio to finish no data will be immediately consumed. */
@@ -140,8 +138,7 @@ void pio_raw_scan()
     }
 }
 
-const uint8_t* pio_get_scan_vals(void)
-{
+const uint8_t* pio_get_scan_vals(void) {
     return s_RawMatrixScanValues;
 }
 
