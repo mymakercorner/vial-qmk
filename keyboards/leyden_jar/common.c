@@ -28,6 +28,7 @@ static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
 static uint16_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
 static uint16_t s_dac_threshold;
 static bool s_is_keyboard_enabled;
+static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
 
 #if defined(MATRIX_FORMAT_XWHATSIT)
 
@@ -50,7 +51,7 @@ static bool s_is_keyboard_enabled;
 
 static void leyden_jar_detect_levels(void) {
     for (int col = 0; col < CONTROLLER_COLS; col++) {
-        for (int row=0; row<8; row++) {
+        for (int row=0; row<CONTROLLER_ROWS; row++) {
             s_matrix_levels[col][row] = 0;
         }
     }
@@ -69,6 +70,12 @@ static void leyden_jar_detect_levels(void) {
                 }
             }
         }
+    }
+
+    if (s_dac_threshold != 0)
+    {
+        dac_write_val(s_dac_threshold);
+        wait_us(100);
     }
 }
 
@@ -147,6 +154,7 @@ void leyden_jar_init(void) {
     io_expander_init();
     pio_matrix_scan_init(CONTROLLER_COLS == 18);
 
+    s_dac_threshold = 0;
     s_is_keyboard_enabled = true;
 }
 
@@ -190,11 +198,6 @@ void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
             current_matrix[row] |= rowVal;
         }
     }
-}
-
-const uint8_t* leyden_jar_physical_matrix_scan() {
-    pio_raw_scan();
-    return pio_get_scan_vals();
 }
 
 bool leyden_jar_set_detect_levels() {
@@ -244,23 +247,35 @@ bool leyden_jar_get_enable_keyboard(uint8_t* is_enabled) {
     return true;
 }
 
-bool leyden_jar_get_logical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size) {
-    if (scan_buffer_size < MATRIX_ROWS * sizeof(matrix_row_t)) {
-        return false;
-    }
-
-    leyden_jar_logical_matrix_scan((matrix_row_t*) scan_ptr);
+bool leyden_jar_set_scan_logical_matrix() {
+    leyden_jar_logical_matrix_scan(s_logical_matrix_scan);
 
     return true;
 }
 
-bool leyden_jar_get_physical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size) {
+bool leyden_jar_set_scan_physical_matrix(void) {
+    pio_raw_scan();
+
+    return true;
+}
+
+bool leyden_jar_get_logical_matrix_row(uint32_t* logical_row_ptr, uint8_t row_index) {
+    if (row_index >= MATRIX_ROWS) {
+        return false;
+    }
+
+    *logical_row_ptr = (uint32_t)s_logical_matrix_scan[row_index];
+
+    return true;
+}
+
+bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buffer_size) {
     if (scan_buffer_size < CONTROLLER_COLS) {
         return false;
     }
 
-    const uint8_t* raw_scan_ptr = leyden_jar_physical_matrix_scan();
-    memcpy(scan_ptr, raw_scan_ptr, CONTROLLER_COLS);
+    const uint8_t* p_raw_vals = pio_get_scan_vals();
+    memcpy(scan_ptr, p_raw_vals, CONTROLLER_COLS);
 
     return true;
 }

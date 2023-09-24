@@ -23,7 +23,7 @@
 void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
     uint8_t command_get_set = data[0];
     uint8_t command_id = data[1];
-    uint8_t* command_payload = data + 2;
+    uint8_t* command_payload = data + 4;
 
     bool protocol_answer_ok = false;
 
@@ -58,14 +58,14 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         protocol_answer_ok = leyden_jar_get_column_levels(col_index, col_level_ptr, max_buffer_size);
                         break;
                     }
-                    case id_leyden_jar_logical_matrix_scan: {
-                        uint16_t max_buffer_size = (length - 4) / sizeof(uint8_t);
-                        protocol_answer_ok = leyden_jar_get_logical_matrix_scan(command_payload + 2, max_buffer_size);
+                    case id_leyden_jar_logical_matrix_row: {
+                        uint16_t row_index = *(uint16_t *)command_payload;
+                        protocol_answer_ok = leyden_jar_get_logical_matrix_row((uint32_t*)(command_payload + 4), row_index);
                         break;
                     }
-                    case id_leyden_jar_physical_matrix_scan: {
+                    case id_leyden_jar_physical_matrix_vals: {
                         uint16_t max_buffer_size = (length - 4) / sizeof(uint8_t);
-                        protocol_answer_ok = leyden_jar_get_physical_matrix_scan(command_payload + 2, max_buffer_size);
+                        protocol_answer_ok = leyden_jar_get_physical_matrix_values(command_payload, max_buffer_size);
                         break;
                     }
                     case id_leyden_jar_dac_threshold: {
@@ -95,6 +95,14 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                     }
                     case id_leyden_jar_detect_levels: {
                         protocol_answer_ok = leyden_jar_set_detect_levels();
+                        break;
+                    }
+                    case id_leyden_jar_scan_logical_matrix: {
+                        protocol_answer_ok = leyden_jar_set_scan_logical_matrix();
+                        break;
+                    }
+                    case id_leyden_jar_scan_physical_matrix: {
+                        protocol_answer_ok = leyden_jar_set_scan_physical_matrix();
                         break;
                     }
                     case id_leyden_jar_enter_bootloader: {

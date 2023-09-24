@@ -29,9 +29,11 @@ enum leyden_jar_keyboard_value_id {
     id_leyden_jar_detect_levels,
     id_leyden_jar_dac_threshold,
     id_leyden_jar_col_levels,
-    id_leyden_jar_logical_matrix_scan,
-    id_leyden_jar_physical_matrix_scan,
+    id_leyden_jar_scan_logical_matrix,
+    id_leyden_jar_scan_physical_matrix,
     id_leyden_jar_enter_bootloader,
     id_leyden_jar_reboot,
-    id_leyden_jar_erase_eeprom
+    id_leyden_jar_erase_eeprom,
+    id_leyden_jar_logical_matrix_row,
+    id_leyden_jar_physical_matrix_vals
 };

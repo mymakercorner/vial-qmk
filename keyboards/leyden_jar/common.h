@@ -29,6 +29,8 @@ bool leyden_jar_get_column_levels(uint16_t col_index, uint16_t* level_buffer_ptr
 bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr);
 bool leyden_jar_set_dac_threshold(uint16_t dac_threshold);
 bool leyden_jar_set_enable_keyboard(uint8_t enable);
+bool leyden_jar_set_scan_logical_matrix(void);
+bool leyden_jar_set_scan_physical_matrix(void);
 bool leyden_jar_get_enable_keyboard(uint8_t* is_enabled);
-bool leyden_jar_get_logical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size);
-bool leyden_jar_get_physical_matrix_scan(uint8_t* scan_ptr, uint16_t scan_buffer_size);
+bool leyden_jar_get_logical_matrix_row(uint32_t* logical_row_ptr, uint8_t row_index);
+bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buffer_size);
