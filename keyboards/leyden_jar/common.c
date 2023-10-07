@@ -36,6 +36,7 @@ static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
     static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
+    static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_XWHATSIT;
 
     #endif
 
@@ -43,6 +44,7 @@ static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
     static const uint8_t s_matrixToControllerRow[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_LEYDEN_JAR;
 
 #endif
 
@@ -279,6 +281,34 @@ bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buff
 
     return true;
 }
+
+bool leyden_jar_get_matrix_to_controller_cols(uint8_t* matrix_to_controller_cols, uint8_t buffer_size)
+{
+    if (buffer_size < CONTROLLER_COLS) {
+        return false;
+    }
+
+    memcpy (matrix_to_controller_cols, s_matrixToControllerCol, CONTROLLER_COLS);
+
+    return true;
+}
+
+bool leyden_jar_get_matrix_to_controller_rows(uint8_t* matrix_to_controller_rows, uint8_t buffer_size)
+{
+    if (buffer_size < CONTROLLER_ROWS) {
+        return false;
+    }
+
+    memcpy (matrix_to_controller_rows, s_matrixToControllerRow, CONTROLLER_ROWS);
+
+    return true;
+}
+
+uint8_t leyden_jar_get_matrix_to_controller_type(void)
+{
+    return s_matrixLayout;
+}
+
 
 
 void via_init_kb(void) {

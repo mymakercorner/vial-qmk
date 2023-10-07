@@ -16,6 +16,11 @@
 
 #pragma once
 
+#define MATRIX_LAYOUT_IS_LEYDEN_JAR 0
+#define MATRIX_LAYOUT_IS_XWHATSIT   1
+#define MATRIX_LAYOUT_IS_WCASS      2
+
+
 void leyden_jar_init(void);
 void leyden_jar_calibrate(int16_t activation_offseet);
 void leyden_jar_update(void);
@@ -34,3 +39,6 @@ bool leyden_jar_set_scan_physical_matrix(void);
 bool leyden_jar_get_enable_keyboard(uint8_t* is_enabled);
 bool leyden_jar_get_logical_matrix_row(uint32_t* logical_row_ptr, uint8_t row_index);
 bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buffer_size);
+bool leyden_jar_get_matrix_to_controller_cols(uint8_t* matrix_to_controller_cols, uint8_t buffer_size);
+bool leyden_jar_get_matrix_to_controller_rows(uint8_t* matrix_to_controller_rows, uint8_t buffer_size);
+uint8_t leyden_jar_get_matrix_to_controller_type(void);

@@ -51,6 +51,13 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         protocol_answer_ok = true;
                         break;
                     }
+                    case id_leyden_jar_matrix_mapping: {
+                        command_payload[0] = leyden_jar_get_matrix_to_controller_type();
+                        leyden_jar_get_matrix_to_controller_cols(command_payload + 1, CONTROLLER_COLS);
+                        leyden_jar_get_matrix_to_controller_rows(command_payload + 1 + CONTROLLER_COLS, CONTROLLER_ROWS);
+                        protocol_answer_ok = true;
+                        break;
+                    }
                     case id_leyden_jar_col_levels: {
                         uint16_t col_index = *(uint16_t *)command_payload;
                         uint16_t *col_level_ptr = (uint16_t *)(command_payload + 2);

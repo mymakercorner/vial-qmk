@@ -35,5 +35,6 @@ enum leyden_jar_keyboard_value_id {
     id_leyden_jar_reboot,
     id_leyden_jar_erase_eeprom,
     id_leyden_jar_logical_matrix_row,
-    id_leyden_jar_physical_matrix_vals
+    id_leyden_jar_physical_matrix_vals,
+    id_leyden_jar_matrix_mapping
 };
