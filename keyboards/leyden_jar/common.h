@@ -42,3 +42,4 @@ bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buff
 bool leyden_jar_get_matrix_to_controller_cols(uint8_t* matrix_to_controller_cols, uint8_t buffer_size);
 bool leyden_jar_get_matrix_to_controller_rows(uint8_t* matrix_to_controller_rows, uint8_t buffer_size);
 uint8_t leyden_jar_get_matrix_to_controller_type(void);
+bool leyden_jar_is_beamspring(void);

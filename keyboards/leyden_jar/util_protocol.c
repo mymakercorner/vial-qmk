@@ -48,6 +48,7 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         command_payload[1] = MATRIX_COLS;
                         command_payload[2] = CONTROLLER_ROWS;
                         command_payload[3] = CONTROLLER_COLS;
+                        command_payload[4] = (leyden_jar_is_beamspring() == true) ? 1 : 0;
                         protocol_answer_ok = true;
                         break;
                     }

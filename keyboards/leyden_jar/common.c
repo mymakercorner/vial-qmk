@@ -309,6 +309,14 @@ uint8_t leyden_jar_get_matrix_to_controller_type(void)
     return s_matrixLayout;
 }
 
+bool leyden_jar_is_beamspring()
+{
+    #ifdef BEAMSPRING_KEYBOARD
+        return true;
+    #else
+        return false;
+    #endif
+}
 
 
 void via_init_kb(void) {
