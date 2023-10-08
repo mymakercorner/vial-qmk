@@ -13,7 +13,8 @@
         ["Spacebar","7U", "6U"],
         ["Enter","ANSI Enter", "ISO Enter", "Tie Enter"],
         "Split Numpad Plus",
-        "Split Numpad Enter"
+        "Split Numpad Enter",
+        "Split Numpad 0"
       ],
       "keymap":
       [
