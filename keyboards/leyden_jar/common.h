@@ -29,10 +29,12 @@ bool leyden_jar_is_enabled(void);
 void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]);
 const uint8_t* leyden_jar_physical_matrix_scan(void);
 
+bool leyden_jar_get_column_bin_map(uint16_t col_index, uint8_t* bin_map_ptr, uint16_t bin_map_buffer_size);
 bool leyden_jar_set_detect_levels(void);
 bool leyden_jar_get_column_levels(uint16_t col_index, uint16_t* level_buffer_ptr, uint16_t level_buffer_size);
-bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr);
-bool leyden_jar_set_dac_threshold(uint16_t dac_threshold);
+bool leyden_jar_get_dac_ref_level(uint16_t* ref_level_ptr, uint8_t bin_number_ptr);
+bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr, uint8_t bin_number_ptr);
+bool leyden_jar_set_dac_threshold(uint16_t dac_threshold, uint8_t bin_number_ptr);
 bool leyden_jar_set_enable_keyboard(uint8_t enable);
 bool leyden_jar_set_scan_logical_matrix(void);
 bool leyden_jar_set_scan_physical_matrix(void);

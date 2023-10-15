@@ -22,12 +22,21 @@
 #include "io_expander.h"
 #include "pio_matrix_scan.h"
 
+typedef struct {
+    uint16_t level;
+    uint8_t  row;
+    uint8_t  col;
+} level_info_t;
+
 #define UNCONNECTED_LEVEL 380
 
 static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
-static uint16_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
-static uint16_t s_dac_threshold;
+static level_info_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
+static uint8_t s_bin_map[CONTROLLER_COLS][CONTROLLER_ROWS];
+static uint16_t s_dac_thresholds[NB_CAL_BINS];
+static uint16_t s_dac_ref_level[NB_CAL_BINS];
 static bool s_is_keyboard_enabled;
+static uint8_t s_RawMergedBinsMatrixScanValues[18];
 static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
 
 #if defined(MATRIX_FORMAT_XWHATSIT)
@@ -73,19 +82,13 @@ static void leyden_jar_detect_levels(void) {
             }
         }
     }
-
-    if (s_dac_threshold != 0)
-    {
-        dac_write_val(s_dac_threshold);
-        wait_us(100);
-    }
 }
 
 static int leyden_jar_compare_vals(const void* pVal1, const void* pVal2) {
-    if (*(uint16_t*)pVal1 < *(uint16_t*)pVal2) {
+    if (((level_info_t*)pVal1)->level < ((level_info_t*)pVal2)->level) {
         return -1;
     }
-    else if (*(uint16_t*)pVal1 > *(uint16_t*)pVal2) {
+    else if (((level_info_t*)pVal1)->level > ((level_info_t*)pVal2)->level) {
         return 1;
     }
     else {
@@ -97,11 +100,13 @@ static int leyden_jar_compare_vals(const void* pVal1, const void* pVal2) {
 static void leyden_jar_sort_level_values(void) {
     for (int col = 0; col < CONTROLLER_COLS; col++) {
         for (int row = 0; row < CONTROLLER_ROWS; row++) {
-            s_sorted_levels[col * CONTROLLER_ROWS + row] = s_matrix_levels[col][row];
+            s_sorted_levels[col * CONTROLLER_ROWS + row].level = s_matrix_levels[col][row];
+            s_sorted_levels[col * CONTROLLER_ROWS + row].row = row;
+            s_sorted_levels[col * CONTROLLER_ROWS + row].col = col;
         }
     }
 
-    qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(uint16_t), leyden_jar_compare_vals);
+    qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(level_info_t), leyden_jar_compare_vals);
 }
 
 /* We compute the threshold to were we consider that a key has been pressed.
@@ -134,21 +139,47 @@ static void leyden_jar_sort_level_values(void) {
  *     - It allows to ignore several pressed keys during boot up (does not work if all keys are pressed).
  *     - Consequently allows to use QMK BOOT_MAGIC lite feature. */
 
-static void leyden_jar_compute_dac_threshold(int16_t activation_offset) {
-    uint16_t median_val = s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS / 2];
-    uint16_t max_val = s_sorted_levels[(CONTROLLER_COLS * CONTROLLER_ROWS) - 1];
+static void leyden_jar_compute_dac_thresholds(int bin_number, int16_t activation_offset, int start_offset, int end_offset) {
+    uint16_t median_val = s_sorted_levels[start_offset + ((end_offset + 1) - start_offset) / 2].level;
+    uint16_t max_val = s_sorted_levels[end_offset].level;
+
+    s_dac_ref_level[bin_number] = median_val;
 
     if (max_val <= UNCONNECTED_LEVEL) {
         if (activation_offset > 0) {
-            s_dac_threshold = 1023;
+            s_dac_thresholds[bin_number] = 1023;
         } else {
-            s_dac_threshold = 300;
+            s_dac_thresholds[bin_number] = 300;
         }
 
     } else {
-        s_dac_threshold = (uint16_t)((int16_t)median_val + activation_offset);
+        s_dac_thresholds[bin_number] = (uint16_t)((int16_t)median_val + activation_offset);
     }
+}
 
+static void leyden_jar_raw_matrix_scan(void) {
+
+    memset(s_RawMergedBinsMatrixScanValues, 0, sizeof(s_RawMergedBinsMatrixScanValues));
+
+    for (int bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
+        dac_write_val(s_dac_thresholds[bin_number]);
+        wait_us(100);
+
+        pio_raw_scan();
+        const uint8_t* p_raw_vals = pio_get_scan_vals();
+
+        for (int col = 0; col < CONTROLLER_COLS; col++) {
+            for (int row = 0; row < CONTROLLER_ROWS; row++) {
+                if (s_bin_map[col][row] == bin_number) {
+                    s_RawMergedBinsMatrixScanValues[col] |= p_raw_vals[col] & (uint8_t)(1<<row);
+                }
+            }
+        }
+    }
+}
+
+static const uint8_t* leyden_jar_get_scan_vals(void) {
+    return s_RawMergedBinsMatrixScanValues;
 }
 
 void leyden_jar_init(void) {
@@ -156,16 +187,41 @@ void leyden_jar_init(void) {
     io_expander_init();
     pio_matrix_scan_init(CONTROLLER_COLS == 18);
 
-    s_dac_threshold = 0;
     s_is_keyboard_enabled = true;
+    //s_is_keyboard_enabled = false;
 }
 
 void leyden_jar_calibrate(int16_t activation_offset) {
     leyden_jar_detect_levels();
     leyden_jar_sort_level_values();
-    leyden_jar_compute_dac_threshold(activation_offset);
-    dac_write_val(s_dac_threshold);
-    wait_us(100);
+
+    int start_offset = CAL_START_OFFSET;
+    int end_offset = CAL_END_OFFSET;
+    int bin_size = (end_offset - start_offset) / NB_CAL_BINS;
+    int start_bin = start_offset;
+
+    for (int col = 0; col < CONTROLLER_COLS; col++) {
+        for (int row = 0; row < CONTROLLER_ROWS; row++) {
+            s_bin_map[col][row] = 0xFF;
+        }
+    }
+
+    for (int bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
+        int end_bin;
+        if (bin_number == NB_CAL_BINS - 1) {
+            end_bin = end_offset - 1;
+        } else {
+            end_bin = start_bin + bin_size - 1;
+        }
+
+        leyden_jar_compute_dac_thresholds(bin_number, activation_offset, start_bin, end_bin);
+
+        for (int bin_elem = start_bin; bin_elem <= end_bin; bin_elem++) {
+            s_bin_map[s_sorted_levels[bin_elem].col][s_sorted_levels[bin_elem].row] = bin_number;
+        }
+
+        start_bin += bin_size;
+    }
 }
 
 void leyden_jar_update(void) {
@@ -181,8 +237,8 @@ bool leyden_jar_is_enabled() {
 }
 
 void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
-    pio_raw_scan();
-    const uint8_t* p_raw_vals = pio_get_scan_vals();
+    leyden_jar_raw_matrix_scan();
+    const uint8_t* p_raw_vals = leyden_jar_get_scan_vals();
 
     for (int row = 0; row < MATRIX_ROWS; row++) {
         current_matrix[row] = 0;
@@ -200,6 +256,18 @@ void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
             current_matrix[row] |= rowVal;
         }
     }
+}
+
+bool leyden_jar_get_column_bin_map(uint16_t col_index, uint8_t* bin_map_ptr, uint16_t bin_map_buffer_size) {
+    if (col_index >= CONTROLLER_COLS || bin_map_buffer_size < CONTROLLER_ROWS) {
+        return false;
+    }
+
+    for (int i=0; i<CONTROLLER_ROWS; i++) {
+        bin_map_ptr[i] = s_bin_map[col_index][i];
+    }
+
+    return true;
 }
 
 bool leyden_jar_set_detect_levels() {
@@ -220,18 +288,23 @@ bool leyden_jar_get_column_levels(uint16_t col_index, uint16_t* level_buffer_ptr
     return true;
 }
 
-bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr) {
-    *dac_threshold_ptr = s_dac_threshold;
+bool leyden_jar_get_dac_ref_level(uint16_t* ref_level_ptr, uint8_t bin_number_ptr) {
+    *ref_level_ptr = s_dac_ref_level[bin_number_ptr];
     return true;
 }
 
-bool leyden_jar_set_dac_threshold(uint16_t dac_threshold) {
+bool leyden_jar_get_dac_threshold(uint16_t* dac_threshold_ptr, uint8_t bin_number_ptr) {
+    *dac_threshold_ptr = s_dac_thresholds[bin_number_ptr];
+    return true;
+}
+
+bool leyden_jar_set_dac_threshold(uint16_t dac_threshold, uint8_t bin_number) {
     if (dac_threshold > 1023) {
         return false;
     }
 
-    s_dac_threshold = dac_threshold;
-    dac_write_val(s_dac_threshold);
+    s_dac_thresholds[bin_number] = dac_threshold;
+    dac_write_val(s_dac_thresholds[bin_number]);
     wait_us(100);
 
     return true;
@@ -256,7 +329,7 @@ bool leyden_jar_set_scan_logical_matrix() {
 }
 
 bool leyden_jar_set_scan_physical_matrix(void) {
-    pio_raw_scan();
+    leyden_jar_raw_matrix_scan();
 
     return true;
 }
@@ -276,7 +349,7 @@ bool leyden_jar_get_physical_matrix_values(uint8_t* scan_ptr, uint16_t scan_buff
         return false;
     }
 
-    const uint8_t* p_raw_vals = pio_get_scan_vals();
+    const uint8_t* p_raw_vals = leyden_jar_get_scan_vals();
     memcpy(scan_ptr, p_raw_vals, CONTROLLER_COLS);
 
     return true;

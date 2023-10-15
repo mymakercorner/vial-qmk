@@ -49,6 +49,7 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         command_payload[2] = CONTROLLER_ROWS;
                         command_payload[3] = CONTROLLER_COLS;
                         command_payload[4] = (leyden_jar_is_beamspring() == true) ? 1 : 0;
+                        command_payload[5] = NB_CAL_BINS;
                         protocol_answer_ok = true;
                         break;
                     }
@@ -57,6 +58,13 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         leyden_jar_get_matrix_to_controller_cols(command_payload + 1, CONTROLLER_COLS);
                         leyden_jar_get_matrix_to_controller_rows(command_payload + 1 + CONTROLLER_COLS, CONTROLLER_ROWS);
                         protocol_answer_ok = true;
+                        break;
+                    }
+                    case id_leyden_jar_bin_map: {
+                        uint16_t col_index = *(uint16_t *)command_payload;
+                        uint8_t *bin_map_ptr = command_payload + 2;
+                        uint16_t max_buffer_size = (length - 4) / sizeof(uint8_t);
+                        protocol_answer_ok = leyden_jar_get_column_bin_map(col_index, bin_map_ptr, max_buffer_size);
                         break;
                     }
                     case id_leyden_jar_col_levels: {
@@ -77,8 +85,15 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         break;
                     }
                     case id_leyden_jar_dac_threshold: {
-                        uint16_t *threshold_ptr = (uint16_t *)command_payload;
-                        protocol_answer_ok = leyden_jar_get_dac_threshold(threshold_ptr);
+                        uint16_t bin_number = *((uint16_t *)command_payload);
+                        uint16_t *threshold_ptr = (uint16_t *)(command_payload + 2);
+                        protocol_answer_ok = leyden_jar_get_dac_threshold(threshold_ptr, bin_number);
+                        break;
+                    }
+                    case id_leyden_jar_dac_ref_level: {
+                        uint16_t bin_number = *((uint16_t *)command_payload);
+                        uint16_t *ref_level_ptr = (uint16_t *)(command_payload + 2);
+                        protocol_answer_ok = leyden_jar_get_dac_ref_level(ref_level_ptr, bin_number);
                         break;
                     }
                     case id_leyden_jar_enable_keyboard: {
@@ -93,7 +108,8 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                 switch( command_id ) {
                     case id_leyden_jar_dac_threshold: {
                         uint16_t threshold = *(uint16_t *)command_payload;
-                        protocol_answer_ok = leyden_jar_set_dac_threshold(threshold);
+                        uint8_t bin_number = *(command_payload + 2);
+                        protocol_answer_ok = leyden_jar_set_dac_threshold(threshold, bin_number);
                         break;
                     }
                     case id_leyden_jar_enable_keyboard: {
