@@ -350,6 +350,11 @@ VPATH += $(USER_PATH)
 VPATH += $(KEYBOARD_PATHS)
 VPATH += $(COMMON_VPATH)
 
+$(KEYMAP_PATH)/vial.json:
+	if [ -s $(KEYBOARD_PATH_1)/vial.json ]; then \
+		cp $(KEYBOARD_PATH_1)/vial.json $(KEYMAP_PATH)/vial.json ; \
+	fi
+
 include common_features.mk
 include $(TMK_PATH)/protocol.mk
 include $(TMK_PATH)/common.mk

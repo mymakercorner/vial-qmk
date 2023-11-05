@@ -19,13 +19,22 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "config_common.h"
 
+#define VIAL_KEYBOARD_UID {0x01, 0x42, 0x46, 0x4D, 0x04, 0x47, 0x09, 0x12}
 /* USB Device descriptor parameter */
 #define VENDOR_ID 0x1209
 #define PRODUCT_ID 0x4704
-#define DEVICE_VER 0x0001
-#define MANUFACTURER Tom Wong-Cornall/Ellipse/wcass/Purdea Andrei
-#define PRODUCT modelfkeyboards.com Brand New FSSK round 1 Keyboard by Model F Labs
-#define DESCRIPTION QMK firmware for the modelfkeyboards.com brand new Model F reproductions
+#define DEVICE_VER 0x4201
+#define MANUFACTURER Model F Labs LLC
+#define PRODUCT FSSK Keyboard (FW:r5)
+#define DESCRIPTION FSSK keyboard by Model F Labs LLC (FW:r5)
+
+#undef BOOTMAGIC_ENABLE
+#undef BOOTMAGIC_LITE
+
+#define VIA_EEPROM_LAYOUT_OPTIONS_SIZE 2
+#define DYNAMIC_KEYMAP_LAYER_COUNT 3
+#define VIAL_TAP_DANCE_ENTRIES 4
+#define VIAL_COMBO_ENTRIES 4
 
 /* key matrix size */
 #define MATRIX_ROWS 8
@@ -191,6 +200,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //#define NO_ACTION_TAPPING
 //#define NO_ACTION_ONESHOT
 
+#define TAPPING_TERM 200
+#define TAPPING_TOGGLE 2
+
 /* disable these deprecated features by default */
 #ifndef LINK_TIME_OPTIMIZATION_ENABLE
   #define NO_ACTION_MACRO
@@ -248,8 +260,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 /* Bootmagic Lite key configuration */
-// #define BOOTMAGIC_LITE_ROW 0
-// #define BOOTMAGIC_LITE_COLUMN 0
+#define BOOTMAGIC_LITE_ROW 0
+#define BOOTMAGIC_LITE_COLUMN 0
 
 #define CONTROLLER_IS_XWHATSIT_MODEL_F_OR_WCASS_MODEL_F
 //#define CONTROLLER_IS_XWHATSIT_BEAMSPRING_REV_4
@@ -262,8 +274,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define CAPSENSE_CAL_ENABLED 1
 // #define CAPSENSE_CAL_ENABLED 0
-#define CAPSENSE_CAL_DEBUG 1
-// #define CAPSENSE_CAL_DEBUG 0
+// #define CAPSENSE_CAL_DEBUG 1
+#define CAPSENSE_CAL_DEBUG 0
+#define CAPSENSE_CAL_AUTOSAVE 0
 #define CAPSENSE_CAL_INIT_REPS 16
 #define CAPSENSE_CAL_EACHKEY_REPS 16
 #define CAPSENSE_CAL_BINS 5
@@ -278,16 +291,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // By default we set up for support of xwhatsit's solenoid driver board.
 // Comment out HAPTIC_ENABLE_PIN if you don't have an enable pin:
 #define HAPTIC_ENABLE_PIN B7
+#define USING_SOLENOID_ENABLE_PIN HAPTIC_ENABLE_PIN
+// Note: The B3 pin on normal wcass controllers is a corner-pin of the atmega, which is not used, so it's easy to solder to for custom modifications.
+// In future versions of the wcass board, this pin may be bought out to a header.
 // We disable haptic feedbeck during USB low power conditions:
 #define HAPTIC_OFF_IN_LOW_POWER 1
 // Change this if you are using a different pin for the solenoid:
-#define SOLENOID_PIN B6
+#define SOLENOID_PIN B3
 // If you are not using a solenoid then comment out the above, and also in rules.mk, remove "HAPTIC_ENABLE += SOLENOID"
 // You can also tune the following for your solenoid:
 #define SOLENOID_DEFAULT_DWELL 20
-#define SOLENOID_MIN_DWELL 4
+#define SOLENOID_MIN_DWELL 20
 //#define SOLENOID_MAX_DWELL 100
 #define NO_HAPTIC_MOD
+#define HAPTIC_EXCLUSION_KEYS 1
 
 // If the lock lights are not used, then please don't define the below pins,
 // or leave them set as unused pins:
@@ -302,8 +319,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // assignments are disabled by default.
 // Instead the more common Num Lock and Caps Lock are assigned the following
 // way by default, and this can be used in combination with the solenoid:
-#define LED_NUM_LOCK_PIN B4
-#define LED_CAPS_LOCK_PIN B5
+#define LED_NUM_LOCK_PIN B5
+#define LED_CAPS_LOCK_PIN B4
+#define LED_SCROLL_LOCK_PIN B6
 
 // Uncomment below if the leds are on when the pin is driving zero:
 //#define LED_NUM_LOCK_ACTIVE_LOW

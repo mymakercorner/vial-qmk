@@ -71,9 +71,10 @@ void via_qmk_rgblight_get_value(uint8_t *data);
 // EEPROM is invalid and use/save defaults.
 bool via_eeprom_is_valid(void) {
 #ifdef VIAL_ENABLE
-    uint8_t magic0 = BUILD_ID & 0xFF;
-    uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
-    uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+    uint8_t keyboard_uid[] = VIAL_KEYBOARD_UID;
+    uint8_t magic0 = keyboard_uid[3];
+    uint8_t magic1 = keyboard_uid[2];
+    uint8_t magic2 = ((keyboard_uid[1] & 0x0F) << 4) | (keyboard_uid[0] & 0x0F);
 #else
     char *  p      = QMK_BUILDDATE;  // e.g. "2019-11-05-11:29:54"
     uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
@@ -88,9 +89,10 @@ bool via_eeprom_is_valid(void) {
 // Keyboard level code (eg. via_init_kb()) should not call this
 void via_eeprom_set_valid(bool valid) {
 #ifdef VIAL_ENABLE
-    uint8_t magic0 = BUILD_ID & 0xFF;
-    uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
-    uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+    uint8_t keyboard_uid[] = VIAL_KEYBOARD_UID;
+    uint8_t magic0 = keyboard_uid[3];
+    uint8_t magic1 = keyboard_uid[2];
+    uint8_t magic2 = ((keyboard_uid[1] & 0x0F) << 4) | (keyboard_uid[0] & 0x0F);
 #else
     char *  p      = QMK_BUILDDATE;  // e.g. "2019-11-05-11:29:54"
     uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
@@ -427,8 +429,7 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                 dynamic_keymap_set_buffer(offset, size, &command_data[3]);
             break;
         }
-#if defined(VIAL_ENABLE) && !defined(VIAL_INSECURE)
-        /* As VIA removed bootloader jump entirely, we shall only keep it for secure builds */
+#if defined(VIAL_ENABLE)
         case id_bootloader_jump: {
             /* Until keyboard is unlocked, don't allow jumping to bootloader */
             if (!vial_unlocked)

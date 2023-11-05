@@ -20,6 +20,7 @@
 #include "matrix_manipulate.h"
 #include <string.h>
 #include <tmk_core/common/eeprom.h>
+#include <progmem.h>
 
 #if defined(KEYBOARD_SHARED_EP) && defined(RAW_ENABLE)
 #error "Enabling the KEYBOARD_SHARED_EP will make the util be unable to communicate with the firmware, because due to hidapi limiations, the util can't figure out which interface to talk to, so it hardcodes interface zero."
@@ -31,11 +32,11 @@
 
 #define min(x, y) (((x) < (y))?(x):(y))
 
-extern const char *KEYBOARD_FILENAME; // This must be defined in keyboard_name.c to equal the filename. This is sent back to the PC-side software for it to determine which keyboard we are using.
+extern const char PROGMEM KEYBOARD_FILENAME[]; // This must be defined in keyboard_name.c to equal the filename. This is sent back to the PC-side software for it to determine which keyboard we are using.
 
 static const uint8_t magic[] = UTIL_COMM_MAGIC;
 
-void raw_hid_receive(uint8_t *data, uint8_t length) {
+void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
     if (0 != memcmp(data, magic, sizeof(magic))) {
         return;
     }
@@ -109,15 +110,18 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         case UTIL_COMM_GET_KEYBOARD_FILENAME:
             {
+                int string_length = strlen_P(KEYBOARD_FILENAME) + 1;
+                const uint8_t offset = data[3];
                 response[2] = UTIL_COMM_RESPONSE_OK;
-                if (data[3] >= strlen(KEYBOARD_FILENAME) + 1)
-                {
+                if (offset >= string_length) {
                     response[3] = 0;
                 } else {
-                    const char *substring = KEYBOARD_FILENAME + data[3];
-                    size_t substring_length = strlen(substring) + 1;
-                    if (substring_length > RAW_EPSIZE - 3) substring_length = RAW_EPSIZE - 3;
-                    memcpy(&response[3], substring, substring_length);
+                    const char *substring = KEYBOARD_FILENAME + offset;
+                    string_length -= offset;
+                    if (string_length > RAW_EPSIZE - 3) {
+                        string_length = RAW_EPSIZE - 3;
+                    }
+                    memcpy_P(&response[3], substring, string_length);
                 }
                 break;
             }

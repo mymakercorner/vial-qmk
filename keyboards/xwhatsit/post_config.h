@@ -18,6 +18,12 @@
 
 #pragma once
 
+#ifndef __ASSEMBLER__
+#ifdef NUMLOCK_SELECTS_LAYER1
+void keyboard_post_init_kb_sub(void);
+#endif
+#endif
+
 #ifndef MATRIX_CAPSENSE_ROWS
 #    ifdef MATRIX_EXTRA_DIRECT_ROWS
 #        define MATRIX_CAPSENSE_ROWS (MATRIX_ROWS - MATRIX_EXTRA_DIRECT_ROWS)

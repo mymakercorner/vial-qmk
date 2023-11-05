@@ -200,6 +200,7 @@ int main(void) {
     /* init TMK modules */
     keyboard_init();
     host_set_driver(driver);
+    keyboard_post_init_kb();
 
 #ifdef SLEEP_LED_ENABLE
     sleep_led_init();

@@ -354,7 +354,7 @@ void keyboard_init(void) {
     debug_enable = true;
 #endif
 
-    keyboard_post_init_kb(); /* Always keep this last */
+    //keyboard_post_init_kb(); /* Always keep this last */
 }
 
 /** \brief key_event_task

@@ -15,10 +15,15 @@
  */
 
 #include "wcass.h"
+#include <progmem.h>
 
-const char *KEYBOARD_FILENAME = __FILE__; // used by util_comm
+const char PROGMEM KEYBOARD_FILENAME[] = __FILE__; // used by util_comm
 
+#ifdef NUMLOCK_SELECTS_LAYER1
+void keyboard_post_init_kb_sub(void)
+#else
 void keyboard_post_init_kb(void)
+#endif
 {
 //    debug_enable=true;
 //    debug_matrix=true;

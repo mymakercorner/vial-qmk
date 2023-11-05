@@ -122,6 +122,8 @@ int main(void) {
 
     wait_ms(50);
 
+    keyboard_post_init_kb();
+
 #ifdef SLEEP_LED_ENABLE
     sleep_led_init();
 #endif

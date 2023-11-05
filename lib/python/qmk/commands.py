@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import random
 from pathlib import Path
 from subprocess import DEVNULL
 from time import strftime
@@ -113,6 +114,7 @@ def write_version_h(git_version, build_date, chibios_version, chibios_contrib_ve
         f'#define QMK_BUILDDATE "{build_date}"',
         f'#define CHIBIOS_VERSION "{chibios_version}"',
         f'#define CHIBIOS_CONTRIB_VERSION "{chibios_contrib_version}"',
+        "#define BUILD_ID ((uint32_t)0x{:08X})".format(random.randrange(0, 2 ** 24 - 1)),
     ]
 
     version_h_file = Path('quantum/version.h')

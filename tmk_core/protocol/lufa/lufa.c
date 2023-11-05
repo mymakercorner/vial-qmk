@@ -1049,6 +1049,7 @@ int main(void) {
     /* init modules */
     keyboard_init();
     host_set_driver(&lufa_driver);
+    keyboard_post_init_kb();
 #ifdef SLEEP_LED_ENABLE
     sleep_led_init();
 #endif

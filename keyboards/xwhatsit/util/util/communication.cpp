@@ -39,7 +39,17 @@ std::vector<std::string> Communication::scan()
 {
     QMutexLocker locker(&mutex);
     std::vector<std::string> ret;
+
+    unsigned int pidlist[ ][2] = 
+    {
+        {0x1209, 0x4704}, // Vial for F62/F77
+        {0x1209, 0xFFF0}, // Vial for F62 (deprecated)
+        {0x1209, 0xFFC0}, // Vial for F77 (deprecated)
+    };
+
     //printf("Scanning\n");
+
+    // Original xwhatsit ibm-capsense-usb & pandrew QMK
     hid_device_info *enu = hid_enumerate(0x0481, 0x0002);
     hid_device_info *devinfo = enu;
     while (devinfo != NULL)
@@ -62,6 +72,23 @@ std::vector<std::string> Communication::scan()
         devinfo = devinfo->next;
     }
     hid_free_enumeration(enu);
+
+    // Other compatible controllers/firmwares from pidlist
+    for (unsigned int i = 0; i < sizeof(pidlist)/sizeof(pidlist[0]); i++)
+    {
+        enu = hid_enumerate(pidlist[i][0], pidlist[i][1]);
+        devinfo = enu;
+        while (devinfo != NULL)
+        {
+            if (devinfo->interface_number == 1)
+            {
+                ret.push_back(devinfo->path);
+            }
+            devinfo = devinfo->next;
+        }
+        hid_free_enumeration(enu);
+    }
+
     return ret;
 }
 

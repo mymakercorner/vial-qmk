@@ -39,7 +39,7 @@
          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Check this before connecting your keyboard, if your keyboard is misbehaving, and sending lots of random characters.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="text">
-         <string>Auto-enter bootloder when new device is found</string>
+         <string>Auto-enter bootloader when new device is found</string>
         </property>
        </widget>
       </item>

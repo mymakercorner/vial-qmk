@@ -17,6 +17,9 @@
 #include "quantum.h"
 #include "matrix_manipulate.h"
 #include <string.h>
+#ifdef NUMLOCK_SELECTS_LAYER1
+#include <eeconfig.h>
+#endif
 
 /* Notes on Expansion Header:
 
@@ -735,6 +738,11 @@ void real_keyboard_init_basic(void)
         setPinOutput(B0);
         writePin(B0, 1);
     #endif
+    #ifdef USING_SOLENOID_ENABLE_PIN
+        // ^^ this must be defined in config.h if you are using and xwhatsit type solenoid
+        setPinOutput(USING_SOLENOID_ENABLE_PIN);
+        writePin(USING_SOLENOID_ENABLE_PIN, 1);
+    #endif
     #if MATRIX_EXTRA_DIRECT_ROWS
         for (int row=0; row<MATRIX_EXTRA_DIRECT_ROWS; row++) {
             for (int col=0; col<MATRIX_COLS; col++) {
@@ -752,13 +760,83 @@ void real_keyboard_init_basic(void)
 }
 
 
+#ifdef NUMLOCK_SELECTS_LAYER1
+typedef union {
+    uint32_t raw;
+    struct {
+        bool numlock_selects_layer1_enabled :1;
+        bool numlock_off_at_boot :1;
+    };
+} kb_config_t;
+
+kb_config_t kb_config;
+#endif
+
+bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+    switch (keycode) {
+#ifdef NUMLOCK_SELECTS_LAYER1
+        case 0x5DFD:
+            if (record->event.pressed) {
+                kb_config.numlock_off_at_boot ^= 1;
+                eeconfig_update_kb(kb_config.raw);
+            }
+            break;
+        case 0x5DFE:
+            if (record->event.pressed) {
+                kb_config.numlock_selects_layer1_enabled ^= 1;
+                eeconfig_update_kb(kb_config.raw);
+                if (!kb_config.numlock_selects_layer1_enabled) {
+                    layer_off(1);
+                } else {
+                    led_update_kb(host_keyboard_led_state());
+                }
+            }
+            break;
+#endif
+        default:
+            break;
+    }
+
+    return process_record_user(keycode, record);
+}
+
 bool led_update_kb(led_t led_state) {
     bool res = led_update_user(led_state);
     if(res) {
         set_leds(led_state.num_lock, led_state.caps_lock, led_state.scroll_lock);
     }
+
+#ifdef NUMLOCK_SELECTS_LAYER1
+    if (kb_config.numlock_selects_layer1_enabled) {
+        if (led_state.num_lock) {
+            layer_on(1);
+        } else {
+            layer_off(1);
+        }
+    }
+#endif
+
     return res;
 }
+
+#ifdef NUMLOCK_SELECTS_LAYER1
+void eeconfig_init_kb(void) {
+    kb_config.raw = 0;
+    kb_config.numlock_selects_layer1_enabled = false;
+    kb_config.numlock_off_at_boot = false;
+    eeconfig_update_kb(kb_config.raw);
+}
+
+void keyboard_post_init_kb(void) {
+    kb_config.raw = eeconfig_read_kb();
+    if (kb_config.numlock_off_at_boot) {
+        if (host_keyboard_led_state().num_lock) {
+            tap_code(KC_LOCKING_NUM);
+        }
+    }
+    keyboard_post_init_kb_sub();
+}
+#endif
 
 void matrix_init_custom(void) {
 

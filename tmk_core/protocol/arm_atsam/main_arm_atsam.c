@@ -276,6 +276,8 @@ int main(void) {
 
     host_set_driver(&arm_atsam_driver);
 
+    keyboard_post_init_kb();
+
 #ifdef CONSOLE_ENABLE
     uint64_t next_print = 0;
 #endif  // CONSOLE_ENABLE
