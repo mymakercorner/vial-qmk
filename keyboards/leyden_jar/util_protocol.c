@@ -18,7 +18,7 @@
 #include "util_protocol.h"
 #include "common.h"
 
-//#ifdef VIA_ENABLE
+#ifdef VIA_ENABLE
 
 void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
     uint8_t command_get_set = data[0];
@@ -156,4 +156,4 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
     }
 }
 
-//#endif
+#endif

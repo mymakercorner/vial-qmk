@@ -188,7 +188,6 @@ void leyden_jar_init(void) {
     pio_matrix_scan_init(CONTROLLER_COLS == 18);
 
     s_is_keyboard_enabled = true;
-    //s_is_keyboard_enabled = false;
 }
 
 void leyden_jar_calibrate(int16_t activation_offset) {
@@ -391,9 +390,12 @@ bool leyden_jar_is_beamspring()
     #endif
 }
 
+#ifdef VIA_ENABLE
 
 void via_init_kb(void) {
     if (!via_eeprom_is_valid()) {
         eeconfig_disable();
     }
 }
+
+#endif
