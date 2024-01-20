@@ -19,34 +19,42 @@
 
 static matrix_row_t s_previous_matrix[MATRIX_ROWS];
 
-//static uint8_t s_col_io_pins[MATRIX_COLS] = MATRIX_COL_PINS;
-//static uint8_t s_row_io_pins[MATRIX_ROWS] = MATRIX_ROW_PINS;
-
-//#define MATRIX_COLS 18
-//#define MATRIX_ROWS 6
-
 static uint8_t s_col_io_pins[MATRIX_COLS] = {GP1, GP2, GP3, GP4, GP5, GP8, GP9, GP10, GP11, GP12, GP13, GP14, GP15, GP0, GP17, GP18, GP26, GP27};
 static uint8_t s_row_io_pins[MATRIX_ROWS] = {GP25, GP24, GP28, GP29, GP23, GP22};
 
 void matrix_init_custom(void) {
+
+    wait_ms(10);
+
     dac_init();
 
-    //dac_write_val(8); // This should translate to ~50mV
-    dac_write_val(4); // This should translate to ~25mV
+    wait_ms(10);
+
+    dac_write_val(32); // This should translate to ~50mV
+
+    wait_ms(10);
+
     for (int i = 0; i < MATRIX_ROWS; i++) {
         s_previous_matrix[i] = 0;
     }
 
-    for (int i = 0; i < MATRIX_COLS; i++) {
-        setPinOutput(s_col_io_pins[i]);
-        writePinLow(s_col_io_pins[i]);
+    iomode_t colums_pin_mode = PAL_RP_GPIO_OE | PAL_RP_PAD_SLEWFAST | PAL_RP_PAD_DRIVE8 | PAL_RP_IOCTRL_FUNCSEL_SIO;
+    for (int i=0; i<MATRIX_COLS; i++)
+    {
+        palSetLineMode(s_col_io_pins[i], colums_pin_mode);
+        palClearLine(s_col_io_pins[i]);
+        wait_us(50);
     }
 
-    for (int i = 0; i < MATRIX_ROWS; i++) {
-        setPinInput(s_row_io_pins[i]);
+    /* Configuration of row pins using ChibiOS hal */
+
+    iomode_t rows_pin_mode = PAL_RP_PAD_IE | PAL_RP_PAD_SCHMITT | PAL_RP_IOCTRL_FUNCSEL_SIO;
+    for (int i=0; i<MATRIX_ROWS; i++)
+    {
+        palSetLineMode(s_row_io_pins[i], rows_pin_mode);
     }
 
-    wait_ms(100);
+    wait_ms(10);
 }
 
 bool matrix_scan_custom(matrix_row_t current_matrix[]) {
@@ -57,18 +65,17 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
     }
 
     for (int col = 0; col < MATRIX_COLS; col++) {
-        writePinHigh(s_col_io_pins[col]);
-        wait_us(40);
+        palSetLine(s_col_io_pins[col]);
+        wait_us(50);
 
         for (int row = 0; row < MATRIX_ROWS; row++) {
-            matrix_row_t rowVal = readPin(s_row_io_pins[row]);
+            matrix_row_t rowVal = (matrix_row_t)palReadLine(s_row_io_pins[row]);
             rowVal = (~rowVal) & 1;
             rowVal = rowVal << col;
             current_matrix[row] |= rowVal;
         }
 
-        writePinLow(s_col_io_pins[col]);
-        wait_us(40);
+        palClearLine(s_col_io_pins[col]);
     }
 
     for (int row = 0; row < MATRIX_ROWS; row++) {
