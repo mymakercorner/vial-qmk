@@ -1,6 +1,6 @@
 CUSTOM_MATRIX=lite
 HAPTIC_ENABLE = yes
-HAPTIC_DRIVER = SOLENOID
+HAPTIC_DRIVER = solenoid
 
 # Wear leveling EEPROM for the RP2040 chip is selected for QMK VIA/VIAL storage
 EEPROM_DRIVER = wear_leveling

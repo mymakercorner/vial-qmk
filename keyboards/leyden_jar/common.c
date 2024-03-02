@@ -23,21 +23,41 @@
 #include "pio_matrix_scan.h"
 
 typedef struct {
+    uint8_t bin;
+    uint8_t row;
+    uint8_t col;
+} key_info_t;
+
+typedef struct {
     uint16_t level;
-    uint8_t  row;
-    uint8_t  col;
-} level_info_t;
+    key_info_t key_info;
+} key_with_level_info_t;
 
 #define UNCONNECTED_LEVEL 380
 
+#ifndef NB_CAL_BINS
+#define NB_CAL_BINS 1
+#endif
+
+#ifndef NB_CUSTOM_CAL_BINS
+#define NB_CUSTOM_CAL_BINS 0
+#endif
+
+
 static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
-static level_info_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
+static key_with_level_info_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
 static uint8_t s_bin_map[CONTROLLER_COLS][CONTROLLER_ROWS];
 static uint16_t s_dac_thresholds[NB_CAL_BINS];
 static uint16_t s_dac_ref_level[NB_CAL_BINS];
 static bool s_is_keyboard_enabled;
 static uint8_t s_RawMergedBinsMatrixScanValues[18];
 static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
+
+#ifdef CUSTOM_CAL_BIN_KEYS
+    static key_info_t s_custom_cal_bin_key_elems[] = CUSTOM_CAL_BIN_KEYS;
+#else
+    static key_info_t s_custom_cal_bin_key_elems[] = {};
+#endif
 
 #if defined(MATRIX_FORMAT_XWHATSIT)
 
@@ -84,29 +104,52 @@ static void leyden_jar_detect_levels(void) {
     }
 }
 
+static size_t leyden_jar_get_nb_custom_cal_bin_key_elems(void) {
+    return sizeof(s_custom_cal_bin_key_elems) / sizeof(key_info_t);
+}
+
+static uint8_t leyden_jar_get_initial_bin(uint8_t row, uint8_t col) {
+    size_t custom_cal_bin_key_elems = leyden_jar_get_nb_custom_cal_bin_key_elems();
+
+    for (size_t i = 0; i < custom_cal_bin_key_elems; i++) {
+        if (s_custom_cal_bin_key_elems[i].row == row && s_custom_cal_bin_key_elems[i].col == col) {
+            return s_custom_cal_bin_key_elems[i].bin;
+        }
+    }
+
+    return 0xFF;
+}
+
 static int leyden_jar_compare_vals(const void* pVal1, const void* pVal2) {
-    if (((level_info_t*)pVal1)->level < ((level_info_t*)pVal2)->level) {
+    if (((key_with_level_info_t*)pVal1)->key_info.bin < ((key_with_level_info_t*)pVal2)->key_info.bin) {
         return -1;
     }
-    else if (((level_info_t*)pVal1)->level > ((level_info_t*)pVal2)->level) {
+    else if (((key_with_level_info_t*)pVal1)->key_info.bin > ((key_with_level_info_t*)pVal2)->key_info.bin) {
+        return 1;
+    }
+
+    if (((key_with_level_info_t*)pVal1)->level < ((key_with_level_info_t*)pVal2)->level) {
+        return -1;
+    }
+    else if (((key_with_level_info_t*)pVal1)->level > ((key_with_level_info_t*)pVal2)->level) {
         return 1;
     }
     else {
         return 0;
     }
-
 }
 
 static void leyden_jar_sort_level_values(void) {
     for (int col = 0; col < CONTROLLER_COLS; col++) {
         for (int row = 0; row < CONTROLLER_ROWS; row++) {
             s_sorted_levels[col * CONTROLLER_ROWS + row].level = s_matrix_levels[col][row];
-            s_sorted_levels[col * CONTROLLER_ROWS + row].row = row;
-            s_sorted_levels[col * CONTROLLER_ROWS + row].col = col;
+            s_sorted_levels[col * CONTROLLER_ROWS + row].key_info.bin = leyden_jar_get_initial_bin(row, col);
+            s_sorted_levels[col * CONTROLLER_ROWS + row].key_info.row = row;
+            s_sorted_levels[col * CONTROLLER_ROWS + row].key_info.col = col;
         }
     }
 
-    qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(level_info_t), leyden_jar_compare_vals);
+    qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(key_with_level_info_t), leyden_jar_compare_vals);
 }
 
 /* We compute the threshold to were we consider that a key has been pressed.
@@ -139,9 +182,9 @@ static void leyden_jar_sort_level_values(void) {
  *     - It allows to ignore several pressed keys during boot up (does not work if all keys are pressed).
  *     - Consequently allows to use QMK BOOT_MAGIC lite feature. */
 
-static void leyden_jar_compute_dac_thresholds(int bin_number, int16_t activation_offset, int start_offset, int end_offset) {
-    uint16_t median_val = s_sorted_levels[start_offset + ((end_offset + 1) - start_offset) / 2].level;
-    uint16_t max_val = s_sorted_levels[end_offset].level;
+static void leyden_jar_compute_dac_thresholds(int bin_number, int16_t activation_offset, int first_elem_offset, int last_elem_offset) {
+    uint16_t median_val = s_sorted_levels[first_elem_offset + ((last_elem_offset + 1) - first_elem_offset) / 2].level;
+    uint16_t max_val = s_sorted_levels[last_elem_offset].level;
 
     s_dac_ref_level[bin_number] = median_val;
 
@@ -194,32 +237,52 @@ void leyden_jar_calibrate(int16_t activation_offset) {
     leyden_jar_detect_levels();
     leyden_jar_sort_level_values();
 
-    int start_offset = CAL_START_OFFSET;
-    int end_offset = CAL_END_OFFSET;
-    int bin_size = (end_offset - start_offset) / NB_CAL_BINS;
-    int start_bin = start_offset;
+    size_t nb_custom_cal_bin_key_elems = leyden_jar_get_nb_custom_cal_bin_key_elems();
 
-    for (int col = 0; col < CONTROLLER_COLS; col++) {
-        for (int row = 0; row < CONTROLLER_ROWS; row++) {
-            s_bin_map[col][row] = 0xFF;
+    size_t bin_size_array[NB_CAL_BINS];
+    size_t bin_size_index = 0;
+    size_t start_offset = 0;
+    size_t end_offset = (CONTROLLER_ROWS * CONTROLLER_COLS);
+
+    while (bin_size_index < NB_CUSTOM_CAL_BINS) {
+        size_t nb_bin_elems = 0;
+        for (size_t i = 0; i < nb_custom_cal_bin_key_elems; i++) {
+            if (s_custom_cal_bin_key_elems[i].bin == bin_size_index) {
+               nb_bin_elems++;
+            }
+        }
+        bin_size_array[bin_size_index] = nb_bin_elems;
+        bin_size_index++;
+        start_offset += nb_bin_elems;
+    }
+
+    int nb_standard_bins = (NB_CAL_BINS - NB_CUSTOM_CAL_BINS);
+    if (nb_standard_bins > 0) {
+        int standard_bin_size = (end_offset - start_offset) / nb_standard_bins;
+
+        while (bin_size_index < NB_CAL_BINS) {
+            if (bin_size_index == NB_CAL_BINS - 1) {
+                bin_size_array[bin_size_index] = end_offset - start_offset;
+            }
+            else {
+                bin_size_array[bin_size_index] = standard_bin_size;
+            }
+            start_offset += bin_size_array[bin_size_index];
+            bin_size_index++;
         }
     }
 
-    for (int bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
-        int end_bin;
-        if (bin_number == NB_CAL_BINS - 1) {
-            end_bin = end_offset - 1;
-        } else {
-            end_bin = start_bin + bin_size - 1;
+    size_t first_elem_offset = 0;
+    for (size_t bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
+        size_t last_elem_offset = first_elem_offset + bin_size_array[bin_number] - 1;
+
+        leyden_jar_compute_dac_thresholds(bin_number, activation_offset, first_elem_offset, last_elem_offset);
+
+        for (size_t bin_elem = first_elem_offset; bin_elem <= last_elem_offset; bin_elem++) {
+            s_bin_map[s_sorted_levels[bin_elem].key_info.col][s_sorted_levels[bin_elem].key_info.row] = bin_number;
         }
 
-        leyden_jar_compute_dac_thresholds(bin_number, activation_offset, start_bin, end_bin);
-
-        for (int bin_elem = start_bin; bin_elem <= end_bin; bin_elem++) {
-            s_bin_map[s_sorted_levels[bin_elem].col][s_sorted_levels[bin_elem].row] = bin_number;
-        }
-
-        start_bin += bin_size;
+        first_elem_offset += bin_size_array[bin_number];
     }
 }
 

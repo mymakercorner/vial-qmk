@@ -20,6 +20,10 @@
 
 #ifdef VIA_ENABLE
 
+#ifndef NB_CAL_BINS
+#define NB_CAL_BINS 1
+#endif
+
 void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
     uint8_t command_get_set = data[0];
     uint8_t command_id = data[1];
