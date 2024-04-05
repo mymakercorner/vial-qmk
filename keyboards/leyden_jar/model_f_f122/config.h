@@ -39,7 +39,7 @@
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     18
 
-#define NB_CAL_BINS         3
-#define NB_CUSTOM_CAL_BINS  2
+//#define NB_CAL_BINS         3
+//#define NB_CUSTOM_CAL_BINS  2
 
-#define CUSTOM_CAL_BIN_KEYS {{0,7,3},{1,6,3}}
+//#define CUSTOM_CAL_BIN_KEYS {{0,7,3},{1,6,3}}
