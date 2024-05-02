@@ -4,9 +4,9 @@
         "pid": "0x4704",
         "device_version": "1.0.0"
     },
-    "keyboard_name": "modelfkeyboards.com F122 Model F Keyboard by Model F Labs",
-    "manufacturer": "Ellipse/Rico",
-    "name": "leyden_jar/model_f_f122",
+    "keyboard_name": "F122 Model F Keyboard by Model F Labs",
+    "manufacturer": "MODEL F LABS LLC",
+    "name": "leyden_jar/f122_model_f",
     "url": "https://www.modelfkeyboards.com/",
     "maintainer": "Rico",
     "board": "GENERIC_RP_RP2040",

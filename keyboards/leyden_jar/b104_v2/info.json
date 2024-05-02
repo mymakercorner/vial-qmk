@@ -4,9 +4,9 @@
         "pid": "0x4704",
         "device_version": "1.0.0"
     },
-    "keyboard_name": "modelfkeyboards.com B104 V2 by Model F Labs",
-    "manufacturer": "Ellipse/Rico",
-    "name": "leyden_jar/b104_v2",
+    "keyboard_name": "B104 Beam Spring Keyboard by Model F Labs",
+    "manufacturer": "MODEL F LABS LLC",
+    "name": "leyden_jar/B104",
     "url": "https://www.modelfkeyboards.com/",
     "maintainer": "Rico",
     "board": "GENERIC_RP_RP2040",
