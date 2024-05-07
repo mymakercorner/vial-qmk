@@ -1,10 +1,10 @@
 
 {
-    "name": "leyden_jar/b104_v2",
+    "name": "leyden_jar/B104",
     "vendorId": "0x1209",
     "productId": "0x4704",
     "lighting": "none",
-    "matrix": { "rows": 8, "cols": 16 },
+    "matrix": { "rows": 8, "cols": 18 },
     "layouts": {
     "labels": [
         "Split Backspace",
