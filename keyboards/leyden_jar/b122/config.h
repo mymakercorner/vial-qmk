@@ -39,7 +39,3 @@
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     18
-
-#define NB_CAL_BINS         2
-#define CAL_START_OFFSET    0
-#define CAL_END_OFFSET      (CONTROLLER_ROWS * CONTROLLER_COLS)
