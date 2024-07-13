@@ -1,0 +1,65 @@
+.program col_8_15_pio
+
+    ; This program sets then clears columns in a data driven approach.
+    ; First byte in the fifo activates only one column of the 8 total (only one of the 8 bits is 1, others are 0).
+    ; Second byte in the fifo deactivates all 8 columns (value is 0).
+    ; Clock must be set so that each clock cycle takes around 100ns (0.1us)
+
+    ; Wait for an IRQ to be set by the first PIO program that handles columns 0 to 7
+    ; This will tell that those 8 first colums have been already handled by col_0_7_pio program and that we can proceed to the last ones
+    wait irq, 0
+    set x, 7 ; We loop 8 times to handle columns 8 to 15
+col8To15Loop:
+    out pins, 8 [8] ; This sets one of the 8 column IO pins to 1, the others to 0, takes 0.8us (timeline: 0.8us)
+    in pins, 8 [27] ; This writes the 8 row values to the queue, takes 2.7us (timeline: 3.6us)
+    
+    ; We need to wait 10us before setting the column pin low
+    ; 3.6us have already passed, need to wait an additional 6.4us
+    nop [31] ;takes 3.2us (timeline: 6.8us)
+    nop [31] ;takes 3.2us (timeline: 10us)
+
+    out pins, 8 [31] ; This sets all 8 column IO pins to 0, takes 3.2us (timeline: 13.1us)
+
+    ; Using an idle loop to wait for the remaining 26.9us.
+    ; This takes only 2 instruction slots.
+    ; Doing that with nop instructions would have taken 9 instruction slots.
+    set y, 7 [12] ;We loop 8 times to handle the 30us idle loop, takes 1.3us (timeline:14.4us)
+idleLoop0:
+    jmp y-- idleLoop0 [31] ;takes 3.2us, 8 times to have at the end a timeline of 40us (14.4 + 8 * 3.2)
+
+    jmp x-- col8To15Loop
+    
+    ; Send an IRQ to awaken the third PIO program that will handle columns 16 to 17
+    irq 1
+
+% c-sdk {
+static inline void col_8_15_pio_init(PIO pio, uint sm, uint offset, uint inPin, uint outPin) {
+    pio_sm_config c = col_8_15_pio_program_get_default_config(offset);
+
+    // Out pins configuration
+    sm_config_set_out_pins(&c, outPin, 8);
+    for (uint i=0; i<8; i++)
+        pio_gpio_init(pio, outPin + i);
+
+    // In pins configuration
+    sm_config_set_in_pins(&c, inPin);
+    for (uint i=0; i<8; i++)
+        pio_gpio_init(pio, inPin + i);
+
+    // Each clock tick will be appromimately 0.1us
+    float div = float(clock_get_hz(clk_sys)) / (10.f*1000.f*1000.f);
+    sm_config_set_clkdiv(&c, div);
+
+    // Initializes TX/RX fifos
+    sm_config_set_out_shift(&c, true, true, 32);
+    sm_config_set_in_shift(&c, true, true, 32);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, outPin, 8, true);
+
+    // Clear IRQ flag before starting, and make sure flag doesn't actually
+    // assert a system-level interrupt (we're using it as a status flag)
+
+    // Init and start the state machine
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
