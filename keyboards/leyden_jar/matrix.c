@@ -24,7 +24,7 @@ matrix_row_t s_previous_matrix[MATRIX_ROWS];
 void matrix_init_custom(void) {
     leyden_jar_init();
 
-    leyden_jar_calibrate(ACTIVATION_OFFSET);
+    leyden_jar_calibrate();
 
     for (int i = 0; i < MATRIX_ROWS; i++) {
         s_previous_matrix[i] = 0;

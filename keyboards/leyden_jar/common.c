@@ -53,6 +53,8 @@ static bool s_is_keyboard_enabled;
 static uint8_t s_RawMergedBinsMatrixScanValues[18];
 static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
 
+static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
+
 #ifdef CUSTOM_CAL_BIN_KEYS
     static key_info_t s_custom_cal_bin_key_elems[] = CUSTOM_CAL_BIN_KEYS;
 #else
@@ -233,7 +235,7 @@ void leyden_jar_init(void) {
     s_is_keyboard_enabled = true;
 }
 
-void leyden_jar_calibrate(int16_t activation_offset) {
+void leyden_jar_calibrate(void) {
     leyden_jar_detect_levels();
     leyden_jar_sort_level_values();
 
@@ -276,7 +278,7 @@ void leyden_jar_calibrate(int16_t activation_offset) {
     for (size_t bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
         size_t last_elem_offset = first_elem_offset + bin_size_array[bin_number] - 1;
 
-        leyden_jar_compute_dac_thresholds(bin_number, activation_offset, first_elem_offset, last_elem_offset);
+        leyden_jar_compute_dac_thresholds(bin_number, s_bin_activation_offsets[bin_number], first_elem_offset, last_elem_offset);
 
         for (size_t bin_elem = first_elem_offset; bin_elem <= last_elem_offset; bin_elem++) {
             s_bin_map[s_sorted_levels[bin_elem].key_info.col][s_sorted_levels[bin_elem].key_info.row] = bin_number;

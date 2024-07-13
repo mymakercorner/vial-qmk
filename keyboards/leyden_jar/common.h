@@ -22,7 +22,7 @@
 
 
 void leyden_jar_init(void);
-void leyden_jar_calibrate(int16_t activation_offseet);
+void leyden_jar_calibrate(void);
 void leyden_jar_update(void);
 void leyden_jar_enable(bool enable);
 bool leyden_jar_is_enabled(void);
