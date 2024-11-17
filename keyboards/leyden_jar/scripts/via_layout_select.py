@@ -2,7 +2,7 @@ import sys
 import json
 import functools
 
-# Checking that th number of arguments are correct
+# Checking that the number of arguments are correct
 
 if len(sys.argv) != 4:
     print("Usage: via_layout_select <in-via.json> <in-layout.json> <out-via.json>")
