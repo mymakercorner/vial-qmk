@@ -4,9 +4,9 @@
         "pid": "0x4704",
         "device_version": "1.0.0"
     },
-    "keyboard_name": "modelfkeyboards.com Brand New F77 Model F Keyboard by Model F Labs",
-    "manufacturer": "Ellipse/Rico",
-    "name": "leyden_jar/brand_new_model_f_f77",
+    "keyboard_name": "F77 Model F Keyboard by Model F Labs",
+    "manufacturer": "MODEL F LABS LLC",
+    "name": "leyden_jar/f77_model_f",
     "url": "https://www.modelfkeyboards.com/",
     "maintainer": "Rico",
     "board": "GENERIC_RP_RP2040",

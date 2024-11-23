@@ -11,6 +11,3 @@
 #define BOOTMAGIC_LITE_COLUMN 0
 
 #define HAPTIC_OFF_IN_LOW_POWER 1
-//#define NO_HAPTIC_MOD
-//#define NO_HAPTIC_LOCKKEYS
-//#define NO_HAPTIC_NAV
