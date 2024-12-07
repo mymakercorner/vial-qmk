@@ -15,7 +15,7 @@
     "width": 24.75,
     "height": 8,
     "features": {
-        "bootmagic": true,
+        "bootmagic": false,
         "command": false,
         "console": false,
         "extrakey": true,
