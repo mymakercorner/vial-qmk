@@ -3,5 +3,6 @@
     "Split Left Shift (ISO)": true,
     "Split Right Shift": false,
     "Enter": "ISO Enter",
-    "Split Numpad 0": false
+    "Split Numpad 0": false,
+    "Full Nav Cluster": false
 }
