@@ -71,6 +71,16 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
 
     #endif
 
+#elif defined(MATRIX_FORMAT_WCASS)
+
+    #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
+
+    static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 11, 7, 8, 9, 15, 14, 13, 12, 10, 6, 3, 5, 4, 2, 255, 255 };
+    static const uint8_t s_matrixToControllerRow[8] = { 6, 7, 5, 4, 3, 2, 1, 0 };
+    static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_WCASS;
+
+    #endif
+
 #elif defined(MATRIX_FORMAT_LEYDEN_JAR)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
