@@ -7,7 +7,7 @@
     "layouts": {
         "labels": [
             "Split Backspace",
-            ["Split Right Shift","No Split","HHKB Split","Non-HHKB Split"],
+            ["Right Shift","No Split","HHKB Split","Non-HHKB Split"],
             ["Enter","ANSI Enter","Tie Enter","ISO Enter"],
             "Split Space",
             "Split Left Shift (ISO)",

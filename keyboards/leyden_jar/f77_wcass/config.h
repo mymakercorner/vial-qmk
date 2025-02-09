@@ -1,4 +1,4 @@
-/* Copyright 2022 Eric Becourt (Rico https://mymakercorner.com)
+/* Copyright 2025 Eric Becourt (Rico https://mymakercorner.com)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
