@@ -23,3 +23,5 @@ qmk compile -kb leyden_jar/b104 -km vial-iso
 qmk compile -kb leyden_jar/f104 -km vial
 
 qmk compile -kb leyden_jar/f77 -km vial
+
+qmk compile -kb leyden_jar/f62 -km vial
