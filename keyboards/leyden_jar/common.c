@@ -66,7 +66,7 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
     #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
-    static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
+    static const uint8_t s_matrixToControllerRow[16] = { 7, 6, 5, 4, 2, 0, 1, 3, 7, 6, 5, 4, 2, 0, 1, 3 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_XWHATSIT;
 
     #endif
@@ -79,13 +79,13 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
         static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 255, 255 };
     #endif
 
-    static const uint8_t s_matrixToControllerRow[8] = { 2, 1, 3, 0, 6, 5, 7, 4 };
+    static const uint8_t s_matrixToControllerRow[16] = { 2, 1, 3, 0, 6, 5, 7, 4, 2, 1, 3, 0, 6, 5, 7, 4 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_WCASS;
 
 #elif defined(MATRIX_FORMAT_LEYDEN_JAR)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
-    static const uint8_t s_matrixToControllerRow[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    static const uint8_t s_matrixToControllerRow[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_LEYDEN_JAR;
 
 #endif
@@ -95,7 +95,7 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
 
 static void leyden_jar_detect_levels(void) {
     for (int col = 0; col < CONTROLLER_COLS; col++) {
-        for (int row=0; row<CONTROLLER_ROWS; row++) {
+        for (int row=0; row < CONTROLLER_ROWS; row++) {
             s_matrix_levels[col][row] = 0;
         }
     }
@@ -315,13 +315,24 @@ void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
     leyden_jar_raw_matrix_scan();
     const uint8_t* p_raw_vals = leyden_jar_get_scan_vals();
 
+#if defined(SPLIT_KEYBOARD)
+    int real_matrix_rows =  MATRIX_ROWS / 2;
+    int row_offset = 0;
+    if (!is_keyboard_left()) {
+        row_offset = real_matrix_rows;
+    }
+#else
+    int real_matrix_rows =  MATRIX_ROWS;
+    int row_offset = 0;
+#endif
+
     for (int row = 0; row < MATRIX_ROWS; row++) {
         current_matrix[row] = 0;
     }
 
     for (int col = 0; col < MATRIX_COLS; col++) {
         int physCol = (int)MATRIX_TO_CONTROLLER_COL(col);
-        for (int row = 0; row < MATRIX_ROWS; row++) {
+        for (int row = row_offset; row < row_offset + real_matrix_rows; row++) {
             int physicalRow = (int)MATRIX_TO_CONTROLLER_ROW(row);
             matrix_row_t rowVal = (matrix_row_t)((p_raw_vals[physCol] >> physicalRow) & 1);
             #ifdef BEAMSPRING_KEYBOARD

@@ -15,6 +15,7 @@
  */
 
 #include "quantum.h"
+#include "split_util.h"
 #include "common.h"
 #include "pio_matrix_scan.h"
 #include "io_expander.h"
@@ -23,7 +24,6 @@ matrix_row_t s_previous_matrix[MATRIX_ROWS];
 
 void matrix_init_custom(void) {
     leyden_jar_init();
-
     leyden_jar_calibrate();
 
     for (int i = 0; i < MATRIX_ROWS; i++) {
