@@ -165,6 +165,26 @@ static void leyden_jar_sort_level_values(void) {
     qsort((void*)s_sorted_levels, CONTROLLER_COLS * CONTROLLER_ROWS, sizeof(key_with_level_info_t), leyden_jar_compare_vals);
 }
 
+/* We check if the controller has been soldered to the keyboard PCB.
+ *
+ * For that we take the maximum level value of all the key matrix and compare it with UNCONNECTED_LEVEL (value is 380).
+ * If the maximum level is below this reference value then we know that the Leyden Jar is unsoldered.
+ * NOTE:
+ *    Previously this detection whas done by taking the maximum level for each bin.
+ *    This was problematic with the F122 keyboard where some bins had all their unpressed keys with a level below the
+ *    UNCONNECTED_LEVEL reference value.
+ *    Using the absolute maximum level of all bins combined solves this issue.
+ */
+
+static bool leyden_jar_is_controller_soldered(void) {
+    if (s_sorted_levels[CONTROLLER_ROWS * CONTROLLER_COLS - 1].level <= UNCONNECTED_LEVEL) {
+        return false;
+    }
+    else {
+        return true;
+    }
+}
+
 /* We compute the threshold to were we consider that a key has been pressed.
  *
  * First step:
@@ -197,11 +217,11 @@ static void leyden_jar_sort_level_values(void) {
 
 static void leyden_jar_compute_dac_thresholds(int bin_number, int16_t activation_offset, int first_elem_offset, int last_elem_offset) {
     uint16_t median_val = s_sorted_levels[first_elem_offset + ((last_elem_offset + 1) - first_elem_offset) / 2].level;
-    uint16_t max_val = s_sorted_levels[last_elem_offset].level;
+    bool is_controller_soldered = leyden_jar_is_controller_soldered();
 
     s_dac_ref_level[bin_number] = median_val;
 
-    if (max_val <= UNCONNECTED_LEVEL) {
+    if (is_controller_soldered == false) {
         if (activation_offset > 0) {
             s_dac_thresholds[bin_number] = 1023;
         } else {
