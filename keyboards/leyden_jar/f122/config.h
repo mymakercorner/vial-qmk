@@ -33,12 +33,12 @@
 
 #define MATRIX_FORMAT_LEYDEN_JAR
 
-#define ACTIVATION_OFFSETS  {15,7}
+#define ACTIVATION_OFFSETS  {7,7,7,7,7,7,7}
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     18
 
-#define NB_CAL_BINS         2
+#define NB_CAL_BINS         7
 #define NB_CUSTOM_CAL_BINS  1
 
 #define CUSTOM_CAL_BIN_KEYS {{0,7,3},{0,6,3}}
