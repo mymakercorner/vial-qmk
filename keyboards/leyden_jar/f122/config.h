@@ -39,6 +39,6 @@
 #define CONTROLLER_COLS     18
 
 #define NB_CAL_BINS         7
-#define NB_CUSTOM_CAL_BINS  1
+#define NB_CUSTOM_CAL_BINS  2
 
-#define CUSTOM_CAL_BIN_KEYS {{0,7,3},{0,6,3}}
+#define CUSTOM_CAL_BIN_KEYS {{0,7,3},{1,6,3}}
