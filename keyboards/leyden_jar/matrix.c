@@ -20,13 +20,19 @@
 #include "pio_matrix_scan.h"
 #include "io_expander.h"
 
-matrix_row_t s_previous_matrix[MATRIX_ROWS];
+#ifdef SPLIT_KEYBOARD
+#    define ROWS_PER_HAND (MATRIX_ROWS / 2)
+#else
+#    define ROWS_PER_HAND (MATRIX_ROWS)
+#endif
+
+matrix_row_t s_previous_matrix[ROWS_PER_HAND];
 
 void matrix_init_custom(void) {
     leyden_jar_init();
     leyden_jar_calibrate();
 
-    for (int i = 0; i < MATRIX_ROWS; i++) {
+    for (int i = 0; i < ROWS_PER_HAND; i++) {
         s_previous_matrix[i] = 0;
     }
 }
@@ -37,7 +43,7 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
     if (leyden_jar_is_enabled() == true) {
         leyden_jar_logical_matrix_scan(current_matrix);
 
-        for (int row = 0; row < MATRIX_ROWS; row++) {
+        for (int row = 0; row < ROWS_PER_HAND; row++) {
             if (s_previous_matrix[row] != current_matrix[row]) {
                 matrix_has_changed = true;
             }

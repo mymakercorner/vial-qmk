@@ -43,6 +43,12 @@ typedef struct {
 #define NB_CUSTOM_CAL_BINS 0
 #endif
 
+#ifdef SPLIT_KEYBOARD
+#    define ROWS_PER_HAND (MATRIX_ROWS / 2)
+#else
+#    define ROWS_PER_HAND (MATRIX_ROWS)
+#endif
+
 
 static uint16_t s_matrix_levels[CONTROLLER_COLS][CONTROLLER_ROWS];
 static key_with_level_info_t s_sorted_levels[CONTROLLER_COLS * CONTROLLER_ROWS];
@@ -51,7 +57,7 @@ static uint16_t s_dac_thresholds[NB_CAL_BINS];
 static uint16_t s_dac_ref_level[NB_CAL_BINS];
 static bool s_is_keyboard_enabled;
 static uint8_t s_RawMergedBinsMatrixScanValues[18];
-static matrix_row_t s_logical_matrix_scan[MATRIX_ROWS];
+static matrix_row_t s_logical_matrix_scan[ROWS_PER_HAND];
 
 static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
 
@@ -315,24 +321,13 @@ void leyden_jar_logical_matrix_scan(matrix_row_t current_matrix[]) {
     leyden_jar_raw_matrix_scan();
     const uint8_t* p_raw_vals = leyden_jar_get_scan_vals();
 
-#if defined(SPLIT_KEYBOARD)
-    int real_matrix_rows =  MATRIX_ROWS / 2;
-    int row_offset = 0;
-    if (!is_keyboard_left()) {
-        row_offset = real_matrix_rows;
-    }
-#else
-    int real_matrix_rows =  MATRIX_ROWS;
-    int row_offset = 0;
-#endif
-
-    for (int row = 0; row < MATRIX_ROWS; row++) {
+    for (int row = 0; row < ROWS_PER_HAND; row++) {
         current_matrix[row] = 0;
     }
 
     for (int col = 0; col < MATRIX_COLS; col++) {
         int physCol = (int)MATRIX_TO_CONTROLLER_COL(col);
-        for (int row = row_offset; row < row_offset + real_matrix_rows; row++) {
+        for (int row = 0; row < ROWS_PER_HAND; row++) {
             int physicalRow = (int)MATRIX_TO_CONTROLLER_ROW(row);
             matrix_row_t rowVal = (matrix_row_t)((p_raw_vals[physCol] >> physicalRow) & 1);
             #ifdef BEAMSPRING_KEYBOARD
@@ -421,7 +416,7 @@ bool leyden_jar_set_scan_physical_matrix(void) {
 }
 
 bool leyden_jar_get_logical_matrix_row(uint32_t* logical_row_ptr, uint8_t row_index) {
-    if (row_index >= MATRIX_ROWS) {
+    if (row_index >= ROWS_PER_HAND) {
         return false;
     }
 
