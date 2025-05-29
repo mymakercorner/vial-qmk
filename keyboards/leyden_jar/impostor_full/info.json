@@ -29,7 +29,9 @@
     },
     "split": {
         "enabled": true,
-        "main": "left",
+        "handedness": {
+            "pin": "GP26"
+        },
         "soft_serial_pin": "GP28",
         "transport": {
             "protocol": "serial"
