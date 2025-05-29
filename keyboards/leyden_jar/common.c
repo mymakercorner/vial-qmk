@@ -72,7 +72,7 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
     #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
-    static const uint8_t s_matrixToControllerRow[16] = { 7, 6, 5, 4, 2, 0, 1, 3, 7, 6, 5, 4, 2, 0, 1, 3 };
+    static const uint8_t s_matrixToControllerRow[16] = { 7, 6, 5, 4, 2, 0, 1, 3 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_XWHATSIT;
 
     #endif
@@ -85,13 +85,13 @@ static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
         static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 255, 255 };
     #endif
 
-    static const uint8_t s_matrixToControllerRow[16] = { 2, 1, 3, 0, 6, 5, 7, 4, 2, 1, 3, 0, 6, 5, 7, 4 };
+    static const uint8_t s_matrixToControllerRow[16] = { 2, 1, 3, 0, 6, 5, 7, 4 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_WCASS;
 
 #elif defined(MATRIX_FORMAT_LEYDEN_JAR)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
-    static const uint8_t s_matrixToControllerRow[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7 };
+    static const uint8_t s_matrixToControllerRow[16] = { 0, 1, 2, 3, 4, 5, 6, 7 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_LEYDEN_JAR;
 
 #endif
@@ -416,11 +416,21 @@ bool leyden_jar_set_scan_physical_matrix(void) {
 }
 
 bool leyden_jar_get_logical_matrix_row(uint32_t* logical_row_ptr, uint8_t row_index) {
-    if (row_index >= ROWS_PER_HAND) {
+    if (row_index >= MATRIX_ROWS) {
         return false;
     }
 
-    *logical_row_ptr = (uint32_t)s_logical_matrix_scan[row_index];
+    *logical_row_ptr = 0;
+    if (row_index >= ROWS_PER_HAND) {
+        if (!is_keyboard_left()) {
+            *logical_row_ptr = (uint32_t)s_logical_matrix_scan[row_index - ROWS_PER_HAND];
+        }
+    }
+    else {
+        if (is_keyboard_left()) {
+            *logical_row_ptr = (uint32_t)s_logical_matrix_scan[row_index];
+        }
+    }
 
     return true;
 }
