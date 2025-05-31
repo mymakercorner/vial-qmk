@@ -105,6 +105,17 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
                         protocol_answer_ok = leyden_jar_get_enable_keyboard(enable_status_ptr);
                         break;
                     }
+                    case id_leyden_jar_is_keyboard_left: {
+                        uint8_t* is_keyboard_left_ptr = command_payload;
+                        if (is_keyboard_left()) {
+                            *is_keyboard_left_ptr = 1;
+                        }
+                        else {
+                            *is_keyboard_left_ptr = 0;
+                        }
+                        protocol_answer_ok = true;
+                        break;
+                    }
                 }
                 break;
             }

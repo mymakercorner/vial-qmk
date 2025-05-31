@@ -16,9 +16,9 @@
 
 #pragma once
 
-#define LEYDEN_JAR_PROTOCOL_MAJOR   0
-#define LEYDEN_JAR_PROTOCOL_MID     9
-#define LEYDEN_JAR_PROTOCOL_MINOR   1
+#define LEYDEN_JAR_PROTOCOL_MAJOR   1
+#define LEYDEN_JAR_PROTOCOL_MID     0
+#define LEYDEN_JAR_PROTOCOL_MINOR   0
 #define LEYDEN_JAR_PROTOCOL_MAGIC   0x21C0
 
 enum leyden_jar_keyboard_value_id {
@@ -38,5 +38,6 @@ enum leyden_jar_keyboard_value_id {
     id_leyden_jar_physical_matrix_vals,
     id_leyden_jar_matrix_mapping,
     id_leyden_jar_dac_ref_level,
-    id_leyden_jar_bin_map
+    id_leyden_jar_bin_map,
+    id_leyden_jar_is_keyboard_left
 };
