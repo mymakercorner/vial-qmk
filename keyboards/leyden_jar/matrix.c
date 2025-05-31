@@ -15,15 +15,19 @@
  */
 
 #include "quantum.h"
-#include "split_util.h"
 #include "common.h"
 #include "pio_matrix_scan.h"
 #include "io_expander.h"
 
 #ifdef SPLIT_KEYBOARD
+
+#include "split_util.h"
 #    define ROWS_PER_HAND (MATRIX_ROWS / 2)
+
 #else
+
 #    define ROWS_PER_HAND (MATRIX_ROWS)
+
 #endif
 
 matrix_row_t s_previous_matrix[ROWS_PER_HAND];
