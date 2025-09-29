@@ -17,10 +17,10 @@
 #ifndef DEVICE_H
 #define DEVICE_H
 
-#include <hidapi.h>
 #include <string>
 #include <vector>
 #include <QMutex>
+#include <hidapi/hidapi.h>
 
 extern const std::string XWHATSIT_ENDING_STRING;
 bool is_xwhatsit_original_firmware_path(std::string path);

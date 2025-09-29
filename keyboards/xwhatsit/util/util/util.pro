@@ -13,12 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#-------------------------------------------------
-#
-# Project created by QtCreator 2020-05-02T21:08:53
-#
-#-------------------------------------------------
-
 QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
@@ -26,22 +20,13 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = util
 TEMPLATE = app
 
-# The following define makes your compiler emit warnings if you use
-# any feature of Qt which has been marked as deprecated (the exact warnings
-# depend on your compiler). Please consult the documentation of the
-# deprecated API in order to know how to port your code away from it.
 DEFINES += QT_DEPRECATED_WARNINGS
-
-# You can also make your code fail to compile if you use deprecated APIs.
-# In order to do so, uncomment the following line.
-# You can also select to disable deprecated APIs only up to a certain version of Qt.
-#DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 CONFIG += c++11
 
 SOURCES += \
-        main.cpp \
-        mainwindow.cpp \
+    main.cpp \
+    mainwindow.cpp \
     monitorwindow.cpp \
     communication.cpp \
     device.cpp \
@@ -52,7 +37,7 @@ SOURCES += \
     rowdactester.cpp
 
 HEADERS += \
-        mainwindow.h \
+    mainwindow.h \
     monitorwindow.h \
     communication.h \
     device.h \
@@ -63,24 +48,33 @@ HEADERS += \
     rowdactester.h
 
 unix:!macx {
-    LIBS += -lhidapi-libusb
-    #LIBS += -lhidapi-hidraw
-    INCLUDEPATH += /usr/include/hidapi
+    #LIBS += -lhidapi-libusb
+    LIBS += -lhidapi-hidraw
 }
 
 macx {
-    INCLUDEPATH += /usr/local/opt/hidapi/include/hidapi
-    LIBS += -L/usr/local/opt/hidapi/lib -lhidapi
+    # tip: build and install hidapi manually with desired MACOSX_DEPLOYMENT_TARGET
+    HIDAPI_PREFIX = $$(HIDAPI_PREFIX)
+    isEmpty( HIDAPI_PREFIX ) {
+        HIDAPI_PREFIX = /opt/homebrew
+    }
+    INCLUDEPATH += $(HIDAPI_PREFIX)/include
+    LIBS +=      -L$(HIDAPI_PREFIX)/lib   -lhidapi
+
+    # assume SDK 26 or later, effectively remove "-framework AGL" which qt5 cmake adds
+    QMAKE_LIBS_OPENGL = -framework OpenGL
+    QMAKE_MACOSX_DEPLOYMENT_TARGET = 13.0
+
+    ICON = modelfkey.icns
 }
 
 win32 {
-    # Note: at the moment this configuration is for cross-compiling only. I have not tested native windows compilation.
-    INCLUDEPATH += /mxe/usr/i686-w64-mingw32.static/include/hidapi
     LIBS += -lhidapi -lsetupapi
+    RC_ICONS = modelfkey.ico
 }
 
 FORMS += \
-        mainwindow.ui \
+    mainwindow.ui \
     monitorwindow.ui \
     signal_level.ui \
     columntester.ui \

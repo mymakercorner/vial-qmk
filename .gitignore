@@ -84,6 +84,7 @@ user_song_list.h
 
 # xwhatsit/wcass vial stuff
 !/.github/*.png
+!/keyboards/xwhatsit/util/**/*.png
 !/keyboards/xwhatsit/*/*/wcass/keymaps/*.hex
 !/flash-util/*.hex
 !/flash-util/*.eep

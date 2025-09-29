@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=pandrew-util
+Exec=/usr/bin/pandrew-util
+Icon=modelfkey
+Categories=Utility;System;

@@ -17,9 +17,9 @@
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
 
-#include <hidapi.h>
 #include <string>
 #include <vector>
+#include <hidapi/hidapi.h>
 #include "device.h"
 
 class Communication

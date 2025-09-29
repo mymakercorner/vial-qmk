@@ -13,11 +13,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-FROM debian:buster
+FROM debian:12
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apt-utils
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get -y update
+
 # MXE dependencies
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get install -y \
     autoconf \
     automake \
     autopoint \
@@ -44,18 +46,17 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     patch \
     perl \
     pkg-config \
-    python \
+    python3 \
+    python3-mako \
+    python-is-python3 \
     ruby \
     sed \
     unzip \
     wget \
     xz-utils
 
-# not really needed, these are:
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mc
-
 RUN git clone https://github.com/mxe/mxe.git
-RUN cd mxe && make qtbase
-RUN cd mxe && make hidapi
 
-ENV PATH="/mxe/usr/bin/:${PATH}"
+RUN cd mxe && make qtbase hidapi MXE_TARGETS='x86_64-w64-mingw32.static'
+
+ENV PATH="/mxe/usr/bin:${PATH}"
