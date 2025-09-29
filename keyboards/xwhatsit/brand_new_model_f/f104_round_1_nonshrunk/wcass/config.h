@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "config_common.h"
 
-#define VIAL_KEYBOARD_UID {0x01, 0x41, 0x46, 0x4D, 0x04, 0x47, 0x09, 0x12}
+#define VIAL_KEYBOARD_UID {0x01, 0x40, 0x46, 0x4D, 0x04, 0x47, 0x09, 0x12}
 /* USB Device descriptor parameter */
 #define VENDOR_ID 0x1209
 #define PRODUCT_ID 0x4704
