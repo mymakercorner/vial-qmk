@@ -10,9 +10,13 @@ def main():
 
     for filename in glob("keyboards/**/vial.json", recursive=True):
         filename = filename[10:-10]
-        keyboard, keymap = filename.split("/keymaps/")
-        keymaps[keyboard].add("default")
-        keymaps[keyboard].add(keymap)
+        if filename.endswith("/wcass"):
+            keyboard = filename
+            keymaps[keyboard].add("default")
+        else:
+            keyboard, keymap = filename.split("/keymaps/")
+            keymaps[keyboard].add("default")
+            keymaps[keyboard].add(keymap)
 
     failed = False
     for keyboard, keymaps in keymaps.items():
