@@ -31,6 +31,17 @@
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
+/* The default value is 1 (byte) but it is not enough to store all layout options of the F122
+ * VIA/VIAL uses for each layout option:
+ * - 1 bit for 2 choices
+ * - 2 bits for 3-4 choices
+ * - 3 bits for 5-8 choices
+ * - 4 bits for 9-16 choices 
+ * 
+ * In the F122 case we need 11 bits, so 2 bytes to properly store layout information
+ */
+#define VIA_EEPROM_LAYOUT_OPTIONS_SIZE  2
+
 #define MATRIX_FORMAT_LEYDEN_JAR
 
 #define ACTIVATION_OFFSETS  {7,7,7,7,7,7,7}
