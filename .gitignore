@@ -10,7 +10,6 @@
 *.qmk
 !util/bootloader.hex
 !quantum/tools/eeprom_reset.hex
-!keyboards/xwhatsit/*/*/wcass/keymaps/*.hex
 *.log
 *.lss
 *.lst
@@ -82,3 +81,12 @@ __pycache__
 
 # Allow to exist but don't include it in the repo
 user_song_list.h
+
+# xwhatsit/wcass vial stuff
+!/.github/*.png
+!/keyboards/xwhatsit/*/*/wcass/keymaps/*.hex
+!/flash-util/*.hex
+!/flash-util/*.eep
+/flash-scripts
+/flash-util/dfu-programmer*
+/flash-util/libusb*
