@@ -10,6 +10,7 @@
 *.qmk
 !util/bootloader.hex
 !quantum/tools/eeprom_reset.hex
+!keyboards/xwhatsit/*/*/wcass/keymaps/*.hex
 *.log
 *.lss
 *.lst
