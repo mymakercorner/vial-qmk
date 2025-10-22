@@ -59,12 +59,12 @@ static bool s_is_keyboard_enabled;
 static uint8_t s_RawMergedBinsMatrixScanValues[18];
 static matrix_row_t s_logical_matrix_scan[ROWS_PER_HAND];
 
-static int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
+static const int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
 
 #ifdef CUSTOM_CAL_BIN_KEYS
-    static key_info_t s_custom_cal_bin_key_elems[] = CUSTOM_CAL_BIN_KEYS;
+    static const key_info_t s_custom_cal_bin_key_elems[] = CUSTOM_CAL_BIN_KEYS;
 #else
-    static key_info_t s_custom_cal_bin_key_elems[] = {};
+    static const key_info_t s_custom_cal_bin_key_elems[] = {};
 #endif
 
 #if defined(MATRIX_FORMAT_XWHATSIT)
@@ -278,7 +278,7 @@ void leyden_jar_calibrate(void) {
 
     size_t nb_custom_cal_bin_key_elems = leyden_jar_get_nb_custom_cal_bin_key_elems();
 
-    size_t bin_size_array[NB_CAL_BINS];
+    static size_t bin_size_array[NB_CAL_BINS];
     size_t bin_size_index = 0;
     size_t start_offset = 0;
     size_t end_offset = (CONTROLLER_ROWS * CONTROLLER_COLS);
@@ -318,7 +318,7 @@ void leyden_jar_calibrate(void) {
         leyden_jar_compute_dac_thresholds(bin_number, s_bin_activation_offsets[bin_number], first_elem_offset, last_elem_offset);
 
         for (size_t bin_elem = first_elem_offset; bin_elem <= last_elem_offset; bin_elem++) {
-            s_bin_map[s_sorted_levels[bin_elem].key_info.col][s_sorted_levels[bin_elem].key_info.row] = bin_number;
+            s_bin_map[s_sorted_levels[bin_elem].key_info.col][s_sorted_levels[bin_elem].key_info.row] = (uint8_t)bin_number;
         }
 
         first_elem_offset += bin_size_array[bin_number];
