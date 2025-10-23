@@ -72,7 +72,7 @@ static const int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
     #if defined(BOARD_MODEL_IS_F77) || defined(BOARD_MODEL_IS_F62)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 255, 255, 255, 255, 255, 255, 255 };
-    static const uint8_t s_matrixToControllerRow[16] = { 7, 6, 5, 4, 2, 0, 1, 3 };
+    static const uint8_t s_matrixToControllerRow[8] = { 7, 6, 5, 4, 2, 0, 1, 3 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_XWHATSIT;
 
     #endif
@@ -85,13 +85,13 @@ static const int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
         static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 255, 255 };
     #endif
 
-    static const uint8_t s_matrixToControllerRow[16] = { 2, 1, 3, 0, 6, 5, 7, 4 };
+    static const uint8_t s_matrixToControllerRow[8] = { 2, 1, 3, 0, 6, 5, 7, 4 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_WCASS;
 
 #elif defined(MATRIX_FORMAT_LEYDEN_JAR)
 
     static const uint8_t s_matrixToControllerCol[18] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
-    static const uint8_t s_matrixToControllerRow[16] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    static const uint8_t s_matrixToControllerRow[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
     static const uint8_t s_matrixLayout = MATRIX_LAYOUT_IS_LEYDEN_JAR;
 
 #endif
