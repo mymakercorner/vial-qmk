@@ -5,7 +5,7 @@
         "device_version": "1.0.1",
 		"suspend_wakeup_delay": 2000
     },
-    "keyboard_name": "F104 Model F Keyboard by Model F Labs",
+    "keyboard_name": "F104 Model F Keyboard by Model F Labs (release 2025.10.24)",
     "manufacturer": "MODEL F LABS LLC",
     "name": "leyden_jar/f104_model_f",
     "url": "https://www.modelfkeyboards.com/",
