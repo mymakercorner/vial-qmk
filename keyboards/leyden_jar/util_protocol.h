@@ -16,9 +16,16 @@
 
 #pragma once
 
-#define LEYDEN_JAR_PROTOCOL_MAJOR   1
-#define LEYDEN_JAR_PROTOCOL_MID     0
-#define LEYDEN_JAR_PROTOCOL_MINOR   0
+#ifdef SPLIT_KEYBOARD
+    #define LEYDEN_JAR_PROTOCOL_MAJOR   1
+    #define LEYDEN_JAR_PROTOCOL_MID     0
+    #define LEYDEN_JAR_PROTOCOL_MINOR   0
+#else
+    #define LEYDEN_JAR_PROTOCOL_MAJOR   0
+    #define LEYDEN_JAR_PROTOCOL_MID     9
+    #define LEYDEN_JAR_PROTOCOL_MINOR   1
+#endif
+
 #define LEYDEN_JAR_PROTOCOL_MAGIC   0x21C0
 
 enum leyden_jar_keyboard_value_id {
