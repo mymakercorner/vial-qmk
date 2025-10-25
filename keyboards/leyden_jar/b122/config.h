@@ -31,6 +31,13 @@
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
+/* RP2040 has lots of RAM and flash, let's make use of this.
+   Emulated EEPROM size is increased from 4KiB (the default) to 16KiB.
+   We can also define and store in EEPROM up to 64 different VIAL macros.
+ */
+#define WEAR_LEVELING_BACKING_SIZE  32768
+#define DYNAMIC_KEYMAP_MACRO_COUNT  64
+
 #define MATRIX_FORMAT_LEYDEN_JAR
 #define BOARD_MODEL_IS_B122
 
