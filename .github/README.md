@@ -93,6 +93,34 @@ computer as a discrete keyboard, and you will need to flash each half
 separately. The two firmwares for the two halves are suffixed with
 "left" / "right" or `_l` / `_r`.
 
+#### flash on windows
+
+After putting the keyboard in "bootloader mode" you have to attach the "WinUSB" driver
+for dfu-programmer 1.x to find it: https://github.com/tmk/tmk_keyboard/wiki/WinUSB-Driver
+
+Summary:
+  * open Device Manager (click Start button and search for "device")
+  * find the "ATmega32U2 DFU" device in the "Other devices" section
+  * right click and "Update driver"
+  * choose "-> Browse my computer for drivers"
+  * choose "-> Let me pick from a list of available drivers ..."
+  * choose "Universal Serial Bus devices"
+  * choose "WinUSB device" in Manufacturer and then again in Model
+  * confirm, yes, done
+
+It's still common to see dfu-programmer 0.7.2 used, that used a different "Atmel FLIP" driver.
+You may have to uninstall it for dfu-programmer-1.x if you happened to install it before.
+
+Then, assuming you have built firmware already (perhaps in WSL or just downloaded the release zip)
+you can use a batch script to flash:
+
+```bat
+flash-util\flash_vial_xwhatsit.bat path\to\firmware.hex path\to\keymaps\MODEL-KEYMAP.hex
+```
+
+(If you're using the release firmware zip, it includes `dfu-programmer.exe` (and libusb dll)  in
+`flash-util/`, if not you can download dfu-programmer 1.x and extract to `flash-util/` yourself.)
+
 
 ### keymap decoder
 
