@@ -307,7 +307,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SOLENOID_MIN_DWELL 20
 //#define SOLENOID_MAX_DWELL 100
 #define NO_HAPTIC_MOD
-#define HAPTIC_EXCLUSION_KEYS 1
 
 // If the lock lights are not used, then please don't define the below pins,
 // or leave them set as unused pins:

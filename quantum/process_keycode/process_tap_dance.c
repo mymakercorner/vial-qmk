@@ -86,7 +86,7 @@ static inline void _process_tap_dance_action_fn(qk_tap_dance_state_t *state, voi
 
 static inline void process_tap_dance_action_on_each_tap(qk_tap_dance_action_t *action) { _process_tap_dance_action_fn(&action->state, action->user_data, action->fn.on_each_tap); }
 
-static inline void process_tap_dance_action_on_dance_finished(qk_tap_dance_action_t *action) {
+void process_tap_dance_action_on_dance_finished(qk_tap_dance_action_t *action) {
     if (action->state.finished) return;
     action->state.finished = true;
     add_mods(action->state.oneshot_mods);
@@ -161,7 +161,7 @@ bool process_tap_dance(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-void matrix_scan_tap_dance() {
+void tap_dance_task() {
     if (highest_td == -1) return;
     uint16_t tap_user_defined;
 
