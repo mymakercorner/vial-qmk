@@ -225,41 +225,48 @@ for row in inViaKeyboardInfo:
         key["x"] -= minX
         key["y"] -= minY
 
-# Merge rows that have the same y value
+# Put all keys in a pool and sort them
 
-similarRowList = []
+unsortedKeyPool = []
 for row in inViaKeyboardInfo:
-    foundSimilarRow = False
-    for similarRows in similarRowList:
-        if row[0]["y"] == similarRows[0][0]["y"]:
-            similarRows.append(row)
-            foundSimilarRow = True
-    if foundSimilarRow is False:
-        similarRowList.append([row])
+    for key in row:
+        unsortedKeyPool.append(key)
 
-def compareKeyX(key0, key1):
-    return key0["x"] - key1["x"]
+def compareKey(key0, key1):
+    if key0["y"] > key1["y"]:
+        return 1
+    if key0["y"] < key1["y"]:
+        return -1
+    if key0["x"] > key1["x"]:
+        return 1
+    if key0["x"] < key1["x"]:
+        return -1
+    return 0
 
-mergedRowsViaKeyboardInfo = []
+sortedKeyPool = sorted(unsortedKeyPool, key=functools.cmp_to_key(compareKey))
 
-for similarRows in similarRowList:
-    mergedRow = []
-    for row in similarRows:
-        mergedRow = mergedRow + row
-    mergedRow = sorted(mergedRow, key=functools.cmp_to_key(compareKeyX))
-    mergedRowsViaKeyboardInfo.append(mergedRow)
+# put back the key in an array of rows
 
-def compareRowY(row0, row1):
-    return row0[0]["y"] - row1[0]["y"]
-
-inViaKeyboardInfo = sorted(mergedRowsViaKeyboardInfo, key=functools.cmp_to_key(compareRowY))
+outViaKeyboardInfo = []
+currentY = -1.0
+currentRow = None
+for key in sortedKeyPool:
+    if key["y"] != currentY:
+        if currentRow is not None:
+            outViaKeyboardInfo.append(currentRow)
+        currentRow = []
+        currentY = key["y"]
+    currentRow.append(key)
+if currentRow is not None and len(currentRow) > 0:
+    outViaKeyboardInfo.append(currentRow)
 
 # Generating target keymap
 
 currentY = 0.0
 outKeymap = []
 
-for row in inViaKeyboardInfo:
+#for row in inViaKeyboardInfo:
+for row in outViaKeyboardInfo:
     currentX = 0.0
     currentX2 = 0.0
     currentW = 1.0
