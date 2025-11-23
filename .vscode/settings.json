@@ -34,5 +34,6 @@
     },
     "clangd.arguments": [
         "--header-insertion=never"
-    ]
+    ],
+    "cmake.sourceDirectory": "C:/Work_Data/Rico/Keyboard_Project/rico_forked_vial-qmk/lib/pico-sdk/src"
 }
