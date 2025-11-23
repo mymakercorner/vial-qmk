@@ -61,9 +61,9 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
 }
 
 /*
- * This empty function disables bootmagic lite feature, were plugging in the keyboard while a particuliar key is pressed
+ * This empty function disables bootmagic feature, were plugging in the keyboard while a particuliar key is pressed
  * allows the MCU to go to the bootloader.
- * We do that because when VIA/Vial features are activated this also activate the bootmagic lite feature, even if the
+ * We do that because when VIA/Vial features are activated this also activate the bootmagic feature, even if the
  * value of "bootmagic" field in info.json has the value false.
  *
  * Doing this is particuliarly critical on beam spring boards where an unpopulated pad (or a malfunctioning key) triggers a keypress.
@@ -75,7 +75,7 @@ bool matrix_scan_custom(matrix_row_t current_matrix[]) {
  * - Use the Leyden Jar Diagnostic Tool.
  */
 
-void bootmagic_lite(void){}
+void bootmagic_scan(void){}
 
 /*
  * This function overrides the default QMK implementation of left/right keyboard part detection in case of split keyboards.
