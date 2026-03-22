@@ -264,6 +264,90 @@ static const uint8_t* leyden_jar_get_scan_vals(void) {
     return s_RawMergedBinsMatrixScanValues;
 }
 
+/* Function that tells if the newly proposed bin is better than the current one.
+ * If the newly proposed bin has it's the reference level closer to the key resting value then it is considered a better bin.
+ * One additional condition is that the newly proposed bin must have the same activation offset value as the current one.
+ * As of now all implemented keyboards have the same activation offset value for all their bins, but this could change in the future. 
+ */
+
+static inline bool is_proposed_bin_better(uint16_t key_unpressed_level, 
+                                          uint16_t current_ref_level, uint16_t current_threshold, uint16_t current_activation_offset,
+                                          uint16_t proposed_ref_level, uint16_t proposed_threshold, uint16_t proposed_activation_offset) {
+
+    if (current_activation_offset != proposed_activation_offset) {
+        return false;
+    }
+
+    uint16_t current_abs_level_diff;
+    uint16_t proposed_abs_level_diff;
+
+    if (key_unpressed_level > current_ref_level) {
+        current_abs_level_diff = key_unpressed_level - current_ref_level;
+    }
+    else {
+        current_abs_level_diff = current_ref_level - key_unpressed_level;
+    }
+
+    if (key_unpressed_level > proposed_ref_level) {
+        proposed_abs_level_diff = key_unpressed_level - proposed_ref_level;
+    }
+    else {
+        proposed_abs_level_diff = proposed_ref_level - key_unpressed_level;
+    }
+
+    if (proposed_abs_level_diff < current_abs_level_diff &&
+        current_activation_offset == proposed_activation_offset) {
+        return true;
+    }
+
+    return false;
+}
+
+/* This function aims to optimize calibration bin allocation for each key.
+ *
+ * Before this function is called the keys are sorted by ascending resting value.
+ * Then the sorted key array is divided into calibration bin sector of equal size (with the exception of the custom bins).
+ * For each calibration bin sector a threshold value is computed based on the median resting value of the calibration bin sector.
+ * 
+ * This already gives overall good results but the calibration bin allocation could be improved further.
+ * For example key resting values that are at the edge of a calibration bin sector (at the beginning or at the end) could be better 
+ * assigned to an adjacent calibration bin sector(either the previous or the next) because their resting key values are 
+ * closer to the median value of this adjacent sector.
+ * 
+ * This function is doing that, assigning each key to the best calibration bin possible.
+ * The algorithm below could be smarter (that is more optimized) but has the benefit of being plenty fast enough and very legible,
+ * that is for each key we parse all the bins and select the best possible one given the reference level of the bin and the resting value of the key.
+ * We pick the bin were the reference level is the closest to the key resting value */
+
+static void leyden_jar_bin_optimize(void) {
+    for (int col = 0; col < CONTROLLER_COLS; col++) {
+        for (int row=0; row < CONTROLLER_ROWS; row++) {
+            uint8_t current_bin_number = s_bin_map[col][row];
+            uint16_t current_ref_level = s_dac_ref_level[current_bin_number];
+            uint16_t current_threshold = s_dac_thresholds[current_bin_number];
+            int16_t current_activation_offset = s_bin_activation_offsets[current_bin_number];
+            uint16_t key_unpressed_level = s_matrix_levels[col][row];
+
+            for (uint8_t bin = 0; bin < NB_CAL_BINS; bin++)
+            {
+                uint16_t proposed_ref_level = s_dac_ref_level[bin];
+                uint16_t proposed_threshold = s_dac_thresholds[bin];
+                int16_t proposed_activation_offset = s_bin_activation_offsets[bin];
+                
+                if (is_proposed_bin_better(key_unpressed_level, 
+                                           current_ref_level, current_threshold, current_activation_offset,
+                                           proposed_ref_level, proposed_threshold, proposed_activation_offset)) {
+                    s_bin_map[col][row] = bin;
+                    current_bin_number = bin;
+                    current_ref_level = proposed_ref_level;
+                    current_threshold = proposed_threshold;
+                    current_activation_offset = proposed_activation_offset;
+                }
+            }
+        }
+    }
+}
+
 void leyden_jar_init(void) {
     dac_init();
     io_expander_init();
@@ -323,6 +407,8 @@ void leyden_jar_calibrate(void) {
 
         first_elem_offset += bin_size_array[bin_number];
     }
+
+    leyden_jar_bin_optimize();
 }
 
 void leyden_jar_update(void) {
