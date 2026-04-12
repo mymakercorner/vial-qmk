@@ -58,6 +58,7 @@ static uint16_t s_dac_ref_level[NB_CAL_BINS];
 static bool s_is_keyboard_enabled;
 static uint8_t s_RawMergedBinsMatrixScanValues[18];
 static matrix_row_t s_logical_matrix_scan[ROWS_PER_HAND];
+static bool s_bin_active[NB_CAL_BINS];
 
 static const int16_t s_bin_activation_offsets[] = ACTIVATION_OFFSETS;
 
@@ -237,6 +238,9 @@ static void leyden_jar_compute_dac_thresholds(int bin_number, int16_t activation
     } else {
         s_dac_thresholds[bin_number] = (uint16_t)((int16_t)median_val + activation_offset);
     }
+
+    // We set this bin as active
+    s_bin_active[bin_number] = true;
 }
 
 static void leyden_jar_raw_matrix_scan(void) {
@@ -244,16 +248,18 @@ static void leyden_jar_raw_matrix_scan(void) {
     memset(s_RawMergedBinsMatrixScanValues, 0, sizeof(s_RawMergedBinsMatrixScanValues));
 
     for (int bin_number = 0; bin_number < NB_CAL_BINS; bin_number++) {
-        dac_write_val(s_dac_thresholds[bin_number]);
-        wait_us(100);
+        if (s_bin_active[bin_number] == true) {
+             dac_write_val(s_dac_thresholds[bin_number]);
+            wait_us(100);
 
-        pio_raw_scan();
-        const uint8_t* p_raw_vals = pio_get_scan_vals();
+            pio_raw_scan();
+            const uint8_t* p_raw_vals = pio_get_scan_vals();
 
-        for (int col = 0; col < CONTROLLER_COLS; col++) {
-            for (int row = 0; row < CONTROLLER_ROWS; row++) {
-                if (s_bin_map[col][row] == bin_number) {
-                    s_RawMergedBinsMatrixScanValues[col] |= p_raw_vals[col] & (uint8_t)(1<<row);
+            for (int col = 0; col < CONTROLLER_COLS; col++) {
+                for (int row = 0; row < CONTROLLER_ROWS; row++) {
+                    if (s_bin_map[col][row] == bin_number) {
+                        s_RawMergedBinsMatrixScanValues[col] |= p_raw_vals[col] & (uint8_t)(1<<row);
+                    }
                 }
             }
         }
@@ -328,8 +334,7 @@ static void leyden_jar_bin_optimize(void) {
             int16_t current_activation_offset = s_bin_activation_offsets[current_bin_number];
             uint16_t key_unpressed_level = s_matrix_levels[col][row];
 
-            for (uint8_t bin = 0; bin < NB_CAL_BINS; bin++)
-            {
+            for (uint8_t bin = 0; bin < NB_CAL_BINS; bin++) {
                 uint16_t proposed_ref_level = s_dac_ref_level[bin];
                 uint16_t proposed_threshold = s_dac_thresholds[bin];
                 int16_t proposed_activation_offset = s_bin_activation_offsets[bin];
@@ -343,6 +348,40 @@ static void leyden_jar_bin_optimize(void) {
                     current_threshold = proposed_threshold;
                     current_activation_offset = proposed_activation_offset;
                 }
+            }
+        }
+    }
+}
+
+/* This function merges bin whenever possible.
+ *
+ * Keyboard matrix scan is done for each active bin, each bin adding keyboard scan time.
+ * Merging bins allows to lower keyboard scan time.
+ * 
+ * To be able to merge two bins the following conditions have to be met:
+ *   - bins activation offset values must be the same.
+ *   - bins reference level values must be the same.
+ *   - they both must be active bins.
+ * 
+ * If merge condition is met, then:
+ *   - keys of the two bins are merge in one of the bins.
+ *   - the other bin is deactivated. */
+
+static void leyden_jar_bin_merge(void) {
+    for (uint8_t bin_src = 0; bin_src < NB_CAL_BINS - 1; bin_src++) {
+        for (uint8_t bin_dst = bin_src + 1; bin_dst < NB_CAL_BINS; bin_dst++) {
+            if (s_dac_ref_level[bin_src] == s_dac_ref_level[bin_dst] &&
+                s_bin_activation_offsets[bin_src] == s_bin_activation_offsets[bin_dst] && 
+                s_bin_active[bin_src] == true && s_bin_active[bin_dst] == true) {
+                for (int col = 0; col < CONTROLLER_COLS; col++) {
+                    for (int row=0; row < CONTROLLER_ROWS; row++) {
+                        if (s_bin_map[col][row] == bin_dst) {
+                            s_bin_map[col][row] = bin_src;
+                        }
+                    }
+                }
+
+                s_bin_active[bin_dst] = false;
             }
         }
     }
@@ -409,6 +448,7 @@ void leyden_jar_calibrate(void) {
     }
 
     leyden_jar_bin_optimize();
+    leyden_jar_bin_merge();
 }
 
 void leyden_jar_update(void) {
