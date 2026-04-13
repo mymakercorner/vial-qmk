@@ -36,7 +36,7 @@
    We can also define and store in EEPROM up to 64 different VIAL macros.
  */
 #define WEAR_LEVELING_BACKING_SIZE  32768
-#define DYNAMIC_KEYMAP_MACRO_COUNT  64
+#define DYNAMIC_KEYMAP_MACRO_COUNT  16
 
 #define MATRIX_FORMAT_WCASS
 #define BOARD_MODEL_IS_F62
