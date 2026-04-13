@@ -45,3 +45,5 @@
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
+
+#define NB_CAL_BINS          3
