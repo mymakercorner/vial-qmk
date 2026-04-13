@@ -41,9 +41,8 @@
 #define MATRIX_FORMAT_WCASS
 #define BOARD_MODEL_IS_F62
 
-#define ACTIVATION_OFFSETS  {10}
+#define NB_CAL_BINS          3
+#define ACTIVATION_OFFSETS  {10, 10, 10}
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
-
-#define NB_CAL_BINS          3
