@@ -40,7 +40,8 @@
 
 #define MATRIX_FORMAT_LEYDEN_JAR
 
-#define ACTIVATION_OFFSETS  {10}
+#define NB_CAL_BINS          3
+#define ACTIVATION_OFFSETS  {10, 10, 10}
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
