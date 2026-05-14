@@ -10,7 +10,7 @@
     "layouts": {
         "labels": [
             "Full Backspace",
-            "Split Left Shift (ISO)",
+            "Full Left Shift",
             "Full Right Shift",
             [
                 "Spacebar",
@@ -244,10 +244,9 @@
             ],
             [
                 {
-                    "w": 1.25
+                    "w": 2.25
                 },
                 "1,1\n\n\n1,1",
-                "1,2\n\n\n1,1",
                 {
                     "x": 0.25
                 },
@@ -255,9 +254,10 @@
                 "2,1",
                 {
                     "x": 0.25,
-                    "w": 2.25
+                    "w": 1.25
                 },
                 "1,1\n\n\n1,0",
+                "1,2\n\n\n1,0",
                 "1,5",
                 "1,15",
                 "0,15",

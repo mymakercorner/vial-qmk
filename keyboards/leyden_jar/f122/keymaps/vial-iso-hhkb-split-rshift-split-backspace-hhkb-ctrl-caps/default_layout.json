@@ -1,6 +1,6 @@
 {
     "Split Backspace": "Full Backspace",
-    "Split Left Shift (ISO)": false,
+    "Split Left Shift (ISO)": "Full Left Shift",
     "Split Right Shift": "Full Right Shift",
     "Spacebar": "7U",
     "Enter": "ISO Enter",
