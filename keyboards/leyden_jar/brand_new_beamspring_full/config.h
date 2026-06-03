@@ -16,46 +16,34 @@
 
 #pragma once
 
-/*
-* Key matrix size
-* Although column 2 is not used by the Beamspring Full Size keyboard we define all 16 columns here.
-* This allow for a more generic matrix scanning code that can also be used by both F77 and F62 keyboards
-*/
-#define MATRIX_ROWS 8
-#define MATRIX_COLS 16
-
-/* Use 1000hz polling */
-#define USB_POLLING_INTERVAL_MS 1
-
 /* RP2040 I2C device 0 is used by QMK API.
  * It is used to drive the the DAC chip that gives the voltage theshold value for the capsense management
  * and the IO expander thats drives the status leds.
 */
-#define I2C_DRIVER I2CD1
+#define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP16
 #define I2C1_SCL_PIN GP17
 #define I2C1_CLOCK_SPEED 400000
 
 #define HAPTIC_ENABLE_PIN GP28
 #define SOLENOID_PIN GP29
-#define SOLENOID_DEFAULT_DWELL 15
+#define SOLENOID_DEFAULT_DWELL 20
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
-#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET // Activates the double-tap behavior
-#define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U // Timeout window in ms in which the double tap can occur.
+/* RP2040 has lots of RAM and flash, let's make use of this.
+   Emulated EEPROM size is increased from 4KiB (the default) to 16KiB.
+   We can also define and store in EEPROM up to 64 different VIAL macros.
+ */
+#define WEAR_LEVELING_BACKING_SIZE  32768
+#define DYNAMIC_KEYMAP_MACRO_COUNT  64
 
-#define ACTIVATION_OFFSET   -30
+#define MATRIX_FORMAT_LEYDEN_JAR
+#define BOARD_MODEL_IS_B014_V2
+
+#define ACTIVATION_OFFSETS   {-30}
 #define BEAMSPRING_KEYBOARD
 
 #define CONTROLLER_ROWS     8
 #define CONTROLLER_COLS     16
 
-#define MATRIX_FORMAT   NATIVE
-#define BOARD_MODEL BEAMSPRING_FULL_V2
-
-/* I2C EEPROM chip model used, if selected in rules.mk file */
-//#define EEPROM_I2C_CAT24C512
-
-// Dynamic EEPROM
-#define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
