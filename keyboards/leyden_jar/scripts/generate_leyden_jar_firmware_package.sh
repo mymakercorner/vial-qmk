@@ -20,6 +20,7 @@ mkdir ./leyden_jar_release_package/f122
 mkdir ./leyden_jar_release_package/f104
 mkdir ./leyden_jar_release_package/f77
 mkdir ./leyden_jar_release_package/f62
+mkdir ./leyden_jar_release_package/f50
 mkdir ./leyden_jar_release_package/b122
 mkdir ./leyden_jar_release_package/b104
 
@@ -27,6 +28,7 @@ cp ./leyden_jar_f122*.uf2 ./leyden_jar_release_package/f122
 cp ./leyden_jar_f104*.uf2 ./leyden_jar_release_package/f104
 cp ./leyden_jar_f77*.uf2 ./leyden_jar_release_package/f77
 cp ./leyden_jar_f62*.uf2 ./leyden_jar_release_package/f62
+cp ./leyden_jar_f50*.uf2 ./leyden_jar_release_package/f50
 cp ./leyden_jar_b122*.uf2 ./leyden_jar_release_package/b122
 cp ./leyden_jar_b104*.uf2 ./leyden_jar_release_package/b104
 
