@@ -19,3 +19,4 @@ python ./scripts/set_leyden_jar_firmware_date.py $2 ./f62/keyboard.json
 python ./scripts/set_leyden_jar_firmware_date.py $2 ./f77/keyboard.json
 python ./scripts/set_leyden_jar_firmware_date.py $2 ./f104/keyboard.json
 python ./scripts/set_leyden_jar_firmware_date.py $2 ./f122/keyboard.json
+python ./scripts/set_leyden_jar_firmware_date.py $2 ./f50/keyboard.json
