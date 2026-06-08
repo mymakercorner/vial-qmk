@@ -40,7 +40,9 @@
 
 #define MATRIX_FORMAT_LEYDEN_JAR
 
-#define ACTIVATION_OFFSETS  {-30}
+#define NB_CAL_BINS         8
+#define ACTIVATION_OFFSETS  {-30,-30,-30,-30,-30,-30,-30,-30}
+
 #define BEAMSPRING_KEYBOARD
 
 #define CONTROLLER_ROWS     8
