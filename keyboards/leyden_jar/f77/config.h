@@ -28,6 +28,16 @@
 #define HAPTIC_ENABLE_PIN GP28
 #define SOLENOID_PIN GP29
 #define SOLENOID_DEFAULT_DWELL 20
+
+/* PS/2 keyboard-device output on the solenoid connector. Enabling it is a plain
+   #define here (QMK force-includes every config.h via -include, so it is visible
+   to the ps2_glue.c guard); the matching SRC lines live in this variant's
+   rules.mk. CLOCK on the haptic-enable pin, DATA on the solenoid pin. Haptic and
+   PS/2 are mutually exclusive at runtime (boot-time latch in ps2_glue.c), so
+   reusing these pins is intentional. */
+#define PS2_DEVICE_ENABLE
+#define PS2_CLOCK_PIN GP28
+#define PS2_DATA_PIN GP29
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
