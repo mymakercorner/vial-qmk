@@ -44,6 +44,11 @@
 
 #    include "hid_to_ps2.h"    // the portable driver's public surface
 
+#    ifdef PS2_FORCE_ENABLE
+#        include "print.h"      // xprintf -> USB-CDC console (sendchar) on RP2040/ChibiOS
+#        include "ps2_trace.h"  // ps2_trace_pop / ps2_trace_dropped for the debug drain
+#    endif
+
 // Free-running microsecond clock for ps2_update. We forward-declare the Pico SDK
 // symbol rather than #include <hardware/timer.h>: once quantum.h / ChibiOS headers
 // are in scope a TIMER macro is defined, and timer.h's invalid_params_if(TIMER, ...)
@@ -70,7 +75,14 @@ static inline uint32_t ps2_now_us(void) {
 #        define PS2_DRAIN_BUDGET_US 10000u  // soft cap on one housekeeping drain (§3.2)
 #    endif
 #    ifndef PS2_USB_SETTLE_MS
-#        define PS2_USB_SETTLE_MS 0u        // bounded confirm window before latching PS/2 (§3.3)
+// How long USB may stay un-enumerated after boot before we conclude "no USB host"
+// and latch to PS/2 (§3.3). MUST be non-zero: usb_connected_state() only reads true
+// after enumeration, which is not guaranteed by the first housekeeping tick. With a
+// 0 window a single early false reading latches to PS/2 even though USB *is* present
+// (host_set_driver then steals keyboard reports off USB -> keys dead, haptic off).
+// The latch re-checks every tick and picks HAPTIC the instant USB comes up, so this
+// is only the worst-case wait a genuine PS/2-powered board takes before starting.
+#        define PS2_USB_SETTLE_MS 2000u     // mirrors SPLIT_USB_TIMEOUT
 #    endif
 #    ifndef PS2_REANNOUNCE_MS
 #        define PS2_REANNOUNCE_MS 1000u     // resend 0xAA cadence until host contact (§7.5)
@@ -89,13 +101,12 @@ static ps2_device s_ps2_dev;
 static uint8_t s_ps2_latest_state[PS2_KEYBOARD_STATE_SIZE_BYTES];
 
 typedef enum {
-    PS2_MODE_UNDECIDED = 0,  // still latching
+    PS2_MODE_UNDECIDED = 0,  // initial sentinel; overwritten by the boot-time decision
     PS2_MODE_HAPTIC,         // USB present -> normal USB keyboard + haptic; PS/2 never inits
     PS2_MODE_PS2,            // no USB -> haptic released, PS/2 running
 } ps2_mode_t;
 
-static ps2_mode_t s_ps2_mode          = PS2_MODE_UNDECIDED;
-static uint32_t   s_ps2_boot_ms       = 0;  // timer_read32() at post_init, for the settle window
+static ps2_mode_t s_ps2_mode          = PS2_MODE_UNDECIDED;  // decided once in keyboard_post_init_kb
 static uint32_t   s_ps2_last_bat_ms   = 0;  // last 0xAA re-announce (§7.5)
 
 // --- host_driver_t callbacks (§3.1) -------------------------------------------
@@ -153,12 +164,12 @@ static host_driver_t s_ps2_host_driver = {
     .send_extra    = ps2_send_extra,
 };
 
-// --- mode latch (§3.3) ---------------------------------------------------------
+// --- mode entry (§3.3) ---------------------------------------------------------
 //
-// Runs from housekeeping (i.e. after keyboard_init incl. the ~1 s capsense
-// calibration + the rest of boot), so if a USB host is present it has already
-// enumerated and usb_connected_state() reads true on the first sample. The settle
-// window is only a bounded safety margin against an unusually slow host.
+// Switch the board from USB/haptic to PS/2 device mode. Called once, from
+// keyboard_post_init_kb (see the boot-order note there). Releases the shared
+// GP28/GP29 pins from the haptic subsystem and hands them plus the resolved-report
+// stream to the PS/2 driver.
 static void ps2_enter_ps2_mode(void) {
     // Release the two shared pins from the haptic subsystem *before* remuxing them
     // to PIO1. haptic_disable() is runtime-only (not persisted), so USB-mode haptic
@@ -176,21 +187,73 @@ static void ps2_enter_ps2_mode(void) {
 
     s_ps2_last_bat_ms = timer_read32();
     s_ps2_mode        = PS2_MODE_PS2;
+
+#    ifdef PS2_FORCE_ENABLE
+    xprintf("\n[ps2] entered PS/2 mode (FORCED, USB console live). clk=GP%u data=GP%u\n",
+            (unsigned)PS2_CLOCK_PIN, (unsigned)PS2_DATA_PIN);
+#    endif
 }
 
-static void ps2_latch_mode(void) {
-    if (usb_connected_state()) {
-        // A USB host is attached -> stay a normal USB keyboard; never init PS/2.
-        s_ps2_mode = PS2_MODE_HAPTIC;
-    } else if (timer_elapsed32(s_ps2_boot_ms) >= PS2_USB_SETTLE_MS) {
-        // No USB after the confirm window -> this board is on a PS/2 connector.
-        ps2_enter_ps2_mode();
+// --- debug trace readout (PS2_FORCE_ENABLE only) ------------------------------
+//
+// Pop the driver's byte-level trace ring buffer and print it over the USB-CDC
+// console (xprintf -> sendchar). Kept in the glue so ps2_trace.c stays byte-
+// identical to the standalone testbed (its own ps2_trace_drain_printf uses stdio
+// printf, which ChibiOS/newlib does not route to the console). Throttled and
+// only called at blob boundaries, so it never perturbs a live PS/2 transaction.
+#    ifdef PS2_FORCE_ENABLE
+static void ps2_debug_drain_trace(void) {
+    static uint32_t last_ms   = 0;
+    static uint32_t prev_us   = 0;
+    static bool     have_prev = false;
+    static uint32_t seen_drop = 0;
+
+    if (timer_elapsed32(last_ms) < 250u) {
+        return;  // rate-limit console traffic to ~4 Hz
     }
-    // else: still inside the settle window, re-check next housekeeping call.
+    last_ms = timer_read32();
+
+    ps2_trace_evt e;
+    while (ps2_trace_pop(&e)) {
+        int32_t dt = have_prev ? (int32_t)(e.t_us - prev_us) : 0;
+        prev_us    = e.t_us;
+        have_prev  = true;
+
+        const char *k;
+        switch (e.tag) {
+            case PS2_TR_TX:      k = "TX  "; break;
+            case PS2_TR_RX:      k = "RX  "; break;
+            case PS2_TR_RX_PERR: k = "RX! "; break;
+            case PS2_TR_RESEND:  k = "RSND"; break;
+            case PS2_TR_BAT:     k = "BAT "; break;
+            case PS2_TR_NOTE:    k = "NOTE"; break;
+            default:             k = "??? "; break;
+        }
+        xprintf("[%lu +%ld] %s %02X\n",
+                (unsigned long)e.t_us, (long)dt, k, (unsigned)e.a);
+    }
+
+    uint32_t dropped = ps2_trace_dropped();
+    if (dropped != seen_drop) {
+        xprintf("[trace] %lu event(s) dropped total\n", (unsigned long)dropped);
+        seen_drop = dropped;
+    }
 }
+#    endif  // PS2_FORCE_ENABLE
 
 // --- per-loop PS/2 servicing (§3.2) -------------------------------------------
 static void ps2_service(void) {
+#    ifdef PS2_FORCE_ENABLE
+    // Report the first host contact once, then stream the byte trace. Both run at
+    // a blob boundary (before the drain loop), never mid-sequence.
+    static bool announced_contact = false;
+    if (!announced_contact && s_ps2_dev.host_contacted) {
+        announced_contact = true;
+        xprintf("[ps2] host_contacted=1 (host is talking to us)\n");
+    }
+    ps2_debug_drain_trace();
+#    endif
+
     // Re-announce BAT-complete until the host first talks to us. Our first 0xAA
     // lands seconds after power-on (boot + calibration + BAT delay), far past the
     // spec window, so a single announce can be missed; repeat until host_contacted.
@@ -214,24 +277,41 @@ static void ps2_service(void) {
 }
 
 // --- QMK hooks -----------------------------------------------------------------
+// The USB-vs-PS/2 mode is decided ONCE here, not polled per loop. This hook is the
+// last thing keyboard_init runs (keyboard_post_init_quantum, keyboard.c ~548), hence
+// *after* haptic_init (keyboard.c ~541): the shared GP28/GP29 pins are already owned
+// by haptic, so it is safe to take them for PS/2. Deciding any earlier (e.g. in
+// matrix_init_custom, keyboard.c ~475) would be undone when haptic_init later re-grabs
+// those pins. We block up to PS2_USB_SETTLE_MS for USB to enumerate - ChibiOS services
+// USB from irq/threads during the wait, so usb_connected_state() still updates - the
+// same idiom QMK split keyboards use for USB detection in split_pre_init.
 void keyboard_post_init_kb(void) {
-    s_ps2_boot_ms = timer_read32();
-    s_ps2_mode    = PS2_MODE_UNDECIDED;
+#    ifdef PS2_FORCE_ENABLE
+    // DEBUG: ignore USB so the USB-CDC console stays live for trace readout while PS/2
+    // runs (host_set_driver only steals keyboard reports, not the console endpoint).
+    // Never enable in a production build.
+    ps2_enter_ps2_mode();
+#    else
+    uint32_t start = timer_read32();
+    while (!usb_connected_state() && timer_elapsed32(start) < PS2_USB_SETTLE_MS) {
+        // spin until the host enumerates us, or the settle window expires
+    }
+    if (usb_connected_state()) {
+        s_ps2_mode = PS2_MODE_HAPTIC;  // USB host present -> normal USB keyboard + haptic
+    } else {
+        ps2_enter_ps2_mode();          // no USB after the window -> this board is on PS/2
+    }
+#    endif
+
     keyboard_post_init_user();  // preserve the keymap-level hook
 }
 
 void housekeeping_task_kb(void) {
-    switch (s_ps2_mode) {
-        case PS2_MODE_UNDECIDED:
-            ps2_latch_mode();
-            break;
-        case PS2_MODE_PS2:
-            ps2_service();
-            break;
-        case PS2_MODE_HAPTIC:
-        default:
-            // USB/haptic mode: PS/2 stays idle, default USB host driver untouched.
-            break;
+    // Only PS/2 mode needs periodic servicing; HAPTIC mode leaves the default USB host
+    // driver untouched. The mode was already latched in keyboard_post_init_kb, so there
+    // is no UNDECIDED state to poll here.
+    if (s_ps2_mode == PS2_MODE_PS2) {
+        ps2_service();
     }
 }
 

@@ -38,6 +38,13 @@
 #define PS2_DEVICE_ENABLE
 #define PS2_CLOCK_PIN GP28
 #define PS2_DATA_PIN GP29
+
+/* DEBUG BRING-UP ONLY -- remove for production. Forces the boot latch into PS/2
+   mode even when USB is attached, so the USB-CDC console stays alive for
+   ps2_trace readout while PS/2 output runs on GP28/GP29. Wire the PS/2 host with
+   GND + CLOCK + DATA only (leave the PS/2 connector's +5V disconnected); power
+   and the console both come from USB. Read the trace with `qmk console`. */
+/* #define PS2_FORCE_ENABLE */  // re-enable after bootmagic-lite is verified
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
