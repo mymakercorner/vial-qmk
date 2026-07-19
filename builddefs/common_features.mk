@@ -226,10 +226,11 @@ else
         OPT_DEFS += -DEEPROM_DRIVER -DEEPROM_STM32_L0_L1
         SRC += eeprom_driver.c eeprom_stm32_L0_L1.c
       else ifneq ($(filter $(MCU_SERIES),RP2040),)
-        # Wear-leveling EEPROM implementation, backed by RP2040 flash
+        # Wear-leveling EEPROM implementation, backed by the ChibiOS EFL
+        # driver on top of the RP XIP flash
         OPT_DEFS += -DEEPROM_DRIVER -DEEPROM_WEAR_LEVELING
         SRC += eeprom_driver.c eeprom_wear_leveling.c
-        WEAR_LEVELING_DRIVER ?= rp2040_flash
+        WEAR_LEVELING_DRIVER ?= embedded_flash
       else ifneq ($(filter $(MCU_SERIES),KL2x K20x),)
         # Teensy EEPROM implementations
         OPT_DEFS += -DEEPROM_KINETIS_FLEXRAM
@@ -247,8 +248,14 @@ else
   endif
 endif
 
-VALID_WEAR_LEVELING_DRIVER_TYPES := custom embedded_flash spi_flash rp2040_flash legacy
+VALID_WEAR_LEVELING_DRIVER_TYPES := custom embedded_flash spi_flash legacy
 WEAR_LEVELING_DRIVER ?= none
+# The pico-sdk-based rp2040_flash backend is superseded by the ChibiOS EFL
+# backend, which uses the same flash region and on-flash format.
+ifeq ($(strip $(WEAR_LEVELING_DRIVER)), rp2040_flash)
+  $(info WEAR_LEVELING_DRIVER=rp2040_flash is superseded by embedded_flash; remapping.)
+  WEAR_LEVELING_DRIVER := embedded_flash
+endif
 ifneq ($(strip $(WEAR_LEVELING_DRIVER)),none)
   ifeq ($(filter $(WEAR_LEVELING_DRIVER),$(VALID_WEAR_LEVELING_DRIVER_TYPES)),)
     $(call CATASTROPHIC_ERROR,Invalid WEAR_LEVELING_DRIVER,WEAR_LEVELING_DRIVER="$(WEAR_LEVELING_DRIVER)" is not a valid wear leveling driver)
@@ -268,9 +275,6 @@ ifneq ($(strip $(WEAR_LEVELING_DRIVER)),none)
       FLASH_DRIVER := spi
       SRC += wear_leveling_flash_spi.c
       POST_CONFIG_H += $(DRIVER_PATH)/wear_leveling/wear_leveling_flash_spi_config.h
-    else ifeq ($(strip $(WEAR_LEVELING_DRIVER)), rp2040_flash)
-      SRC += wear_leveling_rp2040_flash.c
-      POST_CONFIG_H += $(PLATFORM_PATH)/$(PLATFORM_KEY)/$(DRIVER_PATH)/wear_leveling/wear_leveling_rp2040_flash_config.h
     else ifeq ($(strip $(WEAR_LEVELING_DRIVER)), legacy)
       COMMON_VPATH += $(PLATFORM_PATH)/$(PLATFORM_KEY)/$(DRIVER_DIR)/flash
       SRC += legacy_flash_ops.c wear_leveling_legacy.c
