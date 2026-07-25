@@ -39,12 +39,16 @@
 #define PS2_CLOCK_PIN GP28
 #define PS2_DATA_PIN GP29
 
-/* DEBUG BRING-UP ONLY -- remove for production. Forces the boot latch into PS/2
-   mode even when USB is attached, so the USB-CDC console stays alive for
-   ps2_trace readout while PS/2 output runs on GP28/GP29. Wire the PS/2 host with
-   GND + CLOCK + DATA only (leave the PS/2 connector's +5V disconnected); power
-   and the console both come from USB. Read the trace with `qmk console`. */
-/* #define PS2_FORCE_ENABLE */  // re-enable after bootmagic-lite is verified
+/* Strip the driver's byte-level trace ring buffer (ps2_trace.h defaults it to 1
+   for the standalone testbed). Nothing drains it in a production build -- the
+   console readout lived behind PS2_FORCE_ENABLE -- so leaving it on would only
+   cost a 128-entry buffer and a store on every PS/2 byte. For another console
+   bring-up session, set this back to 1 and re-add PS2_FORCE_ENABLE below; the
+   HID console itself needs nothing extra (keyboard.json already has
+   "console": true, and the glue prints with xprintf, which emits regardless of
+   whether debug output has been toggled on at runtime). */
+#define PS2_TRACE_ENABLED 0
+
 #define SOLENOID_MIN_DWELL 4
 #define SOLENOID_MAX_DWELL 100
 
