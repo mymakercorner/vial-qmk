@@ -24,6 +24,28 @@
 #include "hid_to_ps2.h"     // ps2_platform_init prototype
 #include "ps2out.pio.h"     // ps2out_program, ps2out_program_init
 
+// Pad configuration for both PS/2 lines: input-enabled (we read both), Schmitt
+// trigger, 2 mA drive, default (slow) slew - matching ps2_platform_pico.c's pad
+// setup - plus the alternate-function select that hands the pad to the PIO block.
+// No internal pulls: the PS/2 bus is open-collector with external pull-ups.
+// Direction is the PIO's job (pindirs).
+static inline iomode_t ps2_pad_mode(PIO pio) {
+    return PAL_RP_PAD_IE | PAL_RP_PAD_SCHMITT | PAL_RP_PAD_DRIVE2 |
+           (pio == pio1 ? PAL_MODE_ALTERNATE_PIO1 : PAL_MODE_ALTERNATE_PIO0);
+}
+
+// Re-assert PIO ownership of the two PS/2 pads without disturbing the running
+// state machine. Needed because QMK's haptic subsystem shares these pins and can
+// steal one back with gpio_set_pin_output() long after ps2_platform_init ran -
+// see the notify_usb_device_state_change_kb() hook in ps2_glue.c for the exact
+// path. Writing the same pad/ctrl values the pins already hold is a no-op, so
+// this is safe to call at any time, including from interrupt context.
+void ps2_platform_reclaim_pins(PIO pio, uint data_pin, uint clock_pin) {
+    const iomode_t mode = ps2_pad_mode(pio);
+    palSetLineMode(data_pin, mode);
+    palSetLineMode(clock_pin, mode);
+}
+
 void ps2_platform_init(PIO pio, uint sm, uint data_pin, uint clock_pin) {
     // 1. Bring the PIO block out of reset. ChibiOS holds peripherals in reset
     //    until asked (the Pico SDK build does this implicitly). PS/2 runs on PIO1
@@ -32,18 +54,10 @@ void ps2_platform_init(PIO pio, uint sm, uint data_pin, uint clock_pin) {
     //    (RESETS_ALLREG_PIO0).
     hal_lld_peripheral_unreset(pio == pio1 ? RESETS_ALLREG_PIO1 : RESETS_ALLREG_PIO0);
 
-    // 2. Mux data + clock to the PIO. Input-enabled (we read both lines), Schmitt
-    //    trigger, 2 mA drive, default (slow) slew - matching ps2_platform_pico.c's
-    //    pad setup. No internal pulls: the PS/2 bus is open-collector with external
-    //    pull-ups. Direction is the PIO's job (pindirs); ps2out_program_init's
-    //    pio_gpio_init finalises the pad for PIO use, exactly as the matrix's
-    //    col_*_pio_init does after its own palSetLineMode.
-    const iomode_t ps2_pin_mode = PAL_RP_PAD_IE | PAL_RP_PAD_SCHMITT |
-                                  PAL_RP_PAD_DRIVE2 |
-                                  (pio == pio1 ? PAL_MODE_ALTERNATE_PIO1
-                                               : PAL_MODE_ALTERNATE_PIO0);
-    palSetLineMode(data_pin,  ps2_pin_mode);
-    palSetLineMode(clock_pin, ps2_pin_mode);
+    // 2. Mux data + clock to the PIO. ps2out_program_init's pio_gpio_init finalises
+    //    the pad for PIO use below, exactly as the matrix's col_*_pio_init does
+    //    after its own palSetLineMode.
+    ps2_platform_reclaim_pins(pio, data_pin, clock_pin);
 
     // 3. Load the program, patch the clock-wait to an ABSOLUTE gpio (identical to
     //    the pico path - the patch is portable PIO, only the pin mux differs), then

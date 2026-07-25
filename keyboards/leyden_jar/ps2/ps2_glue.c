@@ -38,11 +38,21 @@
 #    include "quantum.h"       // QMK core: hooks, timer_read32/elapsed32, led_t, report_*_t
 #    include "host.h"          // host_set_driver, host_driver_t
 #    include "usb_util.h"      // usb_connected_state
+#    include "usb_device_state.h"  // struct usb_device_state (notify hook signature)
 #    include "haptic.h"        // haptic_disable
 #    include "solenoid.h"      // solenoid_shutdown
 #    include "hardware/pio.h"  // pio1, PIO
+#    ifdef PS2_FORCE_ENABLE
+#        include "hardware/gpio.h"  // gpio_get for the debug heartbeat's live line-level read
+#    endif
 
 #    include "hid_to_ps2.h"    // the portable driver's public surface
+
+// Re-mux the two PS/2 pads back to the PIO after something else has grabbed one.
+// Lives in ps2_platform_chibios.c (the file that owns pin muxing); declared here
+// rather than in hid_to_ps2.h because both files are QMK-only and the portable
+// header must stay byte-identical to the driver repo's copy.
+void ps2_platform_reclaim_pins(PIO pio, uint data_pin, uint clock_pin);
 
 #    ifdef PS2_FORCE_ENABLE
 #        include "print.h"      // xprintf -> USB-CDC console (sendchar) on RP2040/ChibiOS
@@ -171,9 +181,15 @@ static host_driver_t s_ps2_host_driver = {
 // GP28/GP29 pins from the haptic subsystem and hands them plus the resolved-report
 // stream to the PS/2 driver.
 static void ps2_enter_ps2_mode(void) {
-    // Release the two shared pins from the haptic subsystem *before* remuxing them
-    // to PIO1. haptic_disable() is runtime-only (not persisted), so USB-mode haptic
-    // still works on a later boot; solenoid_shutdown() drives GP29 to a safe level.
+    // Quiesce the haptic subsystem *before* remuxing the two shared pins to PIO1.
+    // Neither call actually releases a pin - QMK has no pin-release API, and both
+    // only do SIO writes - but they stop the haptic/solenoid tasks from driving
+    // GP28/GP29 and leave them at a safe level; the real hand-off is the
+    // palSetLineMode inside ps2_platform_init below. haptic_disable() is
+    // runtime-only (not persisted to EEPROM), so USB-mode haptic still works on a
+    // later boot. What this does NOT cover is a *re-mux* by
+    // haptic_notify_usb_device_state_change() after we take the pins - see
+    // notify_usb_device_state_change_kb() near the bottom of this file.
     haptic_disable();
     solenoid_shutdown();
 
@@ -182,7 +198,11 @@ static void ps2_enter_ps2_mode(void) {
     // state in dev.leds itself, which ps2_kb_leds() reads directly.
     ps2_initialize(&s_ps2_dev, PS2_PIO, PS2_SM, PS2_DATA_PIN, PS2_CLOCK_PIN, NULL);
 
-    // From now on QMK pushes resolved reports to us instead of USB.
+    // Ask QMK to push resolved reports to us instead of USB. NOTE: this initial
+    // install is clobbered moments later by protocol_post_init()'s
+    // host_set_driver(&chibios_driver) (see the boot-order note in ps2_service),
+    // so ps2_service re-asserts it every loop. Kept here so the intent is explicit
+    // and the driver is installed as early as possible.
     host_set_driver(&s_ps2_host_driver);
 
     s_ps2_last_bat_ms = timer_read32();
@@ -243,7 +263,53 @@ static void ps2_debug_drain_trace(void) {
 
 // --- per-loop PS/2 servicing (§3.2) -------------------------------------------
 static void ps2_service(void) {
+    // Re-assert our host driver if anything has replaced it. This is REQUIRED, not
+    // defensive: QMK's boot order is protocol_pre_init -> keyboard_init ->
+    // protocol_post_init (quantum/main.c). Our latch runs inside keyboard_init
+    // (keyboard_post_init_kb) and calls host_set_driver(&s_ps2_host_driver), but
+    // protocol_post_init() then runs and unconditionally does
+    // host_set_driver(&chibios_driver) - clobbering ours, so every resolved report
+    // would go to USB and never reach ps2_send_6kro/nkro (=> no keystrokes on the
+    // PS/2 wire, even though BAT/host-command replies still work via ps2_update).
+    // housekeeping runs in the main loop, after protocol_post_init, so re-installing
+    // here wins the race and also survives any later re-install (e.g. USB resume).
+    if (host_get_driver() != &s_ps2_host_driver) {
+        host_set_driver(&s_ps2_host_driver);
+    }
+
 #    ifdef PS2_FORCE_ENABLE
+    // Unconditional ~1 Hz heartbeat: proves the HID console transport works even
+    // when there is zero PS/2 traffic, and dumps the state we need to bisect the
+    // "no keys" fault. keys = number of usage bits currently set in the resolved
+    // report we've been handed (press a key on the F77 and this should rise); drv =
+    // 1 iff our PS/2 host driver is the installed one (0 => still clobbered).
+    static uint32_t s_hb_ms = 0;
+    if (timer_elapsed32(s_hb_ms) >= 1000u) {
+        s_hb_ms = timer_read32();
+        uint8_t keys = 0;
+        for (uint8_t i = 0; i < PS2_KEYBOARD_STATE_SIZE_BYTES; i++) {
+            uint8_t b = s_ps2_latest_state[i];
+            while (b) { keys += (uint8_t)(b & 1u); b >>= 1; }
+        }
+        // Live wire levels: PS/2 idle is BOTH lines high (clk=1 dat=1). If clk=0 the
+        // ps2out PIO's `wait 1 gpio <clock>` never releases, so no frame can start and
+        // qpend stays stuck at 1 - i.e. a missing pull-up / held-low / miswired clock.
+        // busy: bit0 = PIO active or host-inhibit (clock low), bit1 = byte-in-flight guard.
+        // Pico SDK gpio_get (reads sio_hw->gpio_in) rather than ChibiOS palReadLine:
+        // the latter expands to SIO->GPIO_IN, and the Pico SDK header #defines
+        // GPIO_IN 0, so the PAL macro fails to compile in this mixed TU. The pad
+        // input reaches the SIO even while the pin is muxed to PIO, so this is the
+        // true line level. PS2_CLOCK_PIN/PS2_DATA_PIN (GPnn) are plain pad numbers.
+        unsigned clk = (unsigned)gpio_get(PS2_CLOCK_PIN);
+        unsigned dat = (unsigned)gpio_get(PS2_DATA_PIN);
+        xprintf("[ps2] hb startup=%u set=%u scan=%u contacted=%u keys=%u drv=%u qpend=%u busy=%u sent=%u clk=%u dat=%u\n",
+                (unsigned)s_ps2_dev.startup, (unsigned)s_ps2_dev.current_set,
+                (unsigned)s_ps2_dev.scanning_enabled, (unsigned)s_ps2_dev.host_contacted,
+                (unsigned)keys, (unsigned)(host_get_driver() == &s_ps2_host_driver),
+                (unsigned)ps2_tx_pending(&s_ps2_dev),
+                (unsigned)s_ps2_dev.busy, (unsigned)s_ps2_dev.sent, clk, dat);
+    }
+
     // Report the first host contact once, then stream the byte trace. Both run at
     // a blob boundary (before the drain loop), never mid-sequence.
     static bool announced_contact = false;
@@ -313,6 +379,41 @@ void housekeeping_task_kb(void) {
     if (s_ps2_mode == PS2_MODE_PS2) {
         ps2_service();
     }
+}
+
+// Take the PS/2 pins back from the haptic subsystem. THIS IS LOAD-BEARING, not
+// defensive - it fixes the stuck bus (clk stuck low, `busy=1 sent=0 clk=0 dat=1`)
+// seen at M4 bring-up. The path:
+//
+//   f77/keymaps/vial/config.h sets HAPTIC_OFF_IN_LOW_POWER 1, which turns on the
+//   `#if defined(HAPTIC_ENABLE) && HAPTIC_OFF_IN_LOW_POWER` gate in
+//   tmk_core/protocol/usb_device_state.c, so every USB device-state transition
+//   calls haptic_notify_usb_device_state_change() (quantum/haptic.c). That does
+//   update_haptic_enable_gpios() - haptic is disabled here, so it writes
+//   HAPTIC_ENABLE_PIN_WRITE_INACTIVE() == gpio_write_pin_low(GP28) - and then
+//   gpio_set_pin_output(HAPTIC_ENABLE_PIN), which re-muxes GP28 from PIO1 back to
+//   SIO *as a driven output*. GP28 is our PS/2 CLOCK, so the bus is pinned low and
+//   the ps2out program's `wait 1 gpio <clock>` never releases. GP29 (data) is not
+//   on this path, which is exactly why the fault showed as clk=0 with dat=1.
+//
+// A bare gpio_write_pin on a PIO-owned pad is harmless (the earlier analysis was
+// right about that); it is the gpio_set_pin_output *re-mux* that steals the pin.
+// This fires on configure / suspend / resume / reset / SET_PROTOCOL / host-LED /
+// idle-rate changes, i.e. any time after our boot latch - and it is why the M4
+// debug harness worked: it was built with HAPTIC_ENABLE=no, compiling the whole
+// path out.
+//
+// notify_usb_device_state_change_kb is the right seam: it is a weak symbol called
+// from the very same notify_usb_device_state_change() a few lines *after* the
+// haptic call (usb_device_state.c), so the repair happens in the same invocation
+// and cannot be missed. It also keeps the fix inside keyboards/leyden_jar/ - no
+// QMK core changes. Worst case a USB event lands mid-frame and corrupts one byte;
+// the host's resend handling covers that, and these events are rare.
+void notify_usb_device_state_change_kb(struct usb_device_state usb_device_state) {
+    if (s_ps2_mode == PS2_MODE_PS2) {
+        ps2_platform_reclaim_pins(PS2_PIO, PS2_DATA_PIN, PS2_CLOCK_PIN);
+    }
+    notify_usb_device_state_change_user(usb_device_state);  // preserve the keymap-level hook
 }
 
 // In PS/2 mode the solenoid connector carries the PS/2 bus (GP28/GP29 are muxed to
