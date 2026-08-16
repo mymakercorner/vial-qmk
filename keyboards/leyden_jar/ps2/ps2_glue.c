@@ -10,8 +10,9 @@
  *     PS/2 can own them; the choice is latched at boot from USB-enumeration state.
  *   - A custom host_driver_t so QMK pushes every *resolved* keyboard report to us
  *     (layers/macros/remaps already applied) instead of to USB (§3.1).
- *   - Per-loop protocol servicing: a bounded, blob-atomic drain of ps2_update in
- *     housekeeping_task_kb (§3.2).
+ *   - Protocol servicing on a dedicated ChibiOS thread at NORMALPRIO+1 (§3.4), so
+ *     ps2_update never runs on the QMK main loop and the capsense scan keeps its
+ *     period. Replaced the bounded blob-atomic drain of §3.2.
  *   - PS/2-host LEDs handed back to QMK's own led_task via keyboard_leds() (§6).
  *   - BAT (0xAA) re-announce until the host first talks to us (§7.5).
  *
@@ -35,6 +36,11 @@
 #    include <stdint.h>
 #    include <string.h>
 
+#    include <hal.h>          // ChibiOS: -> osal.h -> ch.h, i.e. chThdCreateStatic,
+                               // chBSemWaitTimeout, chSysLock, TIME_US2I, NORMALPRIO.
+                               // quantum.h reaches these transitively, but the PS/2
+                               // thread (§3.4) depends on the kernel API directly, so
+                               // say so - same as platforms/chibios/drivers/serial.c.
 #    include "quantum.h"       // QMK core: hooks, timer_read32/elapsed32, led_t, report_*_t
 #    include "host.h"          // host_set_driver, host_driver_t
 #    include "usb_util.h"      // usb_connected_state
@@ -81,8 +87,47 @@ static inline uint32_t ps2_now_us(void) {
 #    endif
 
 // --- tunables: config.h may override; sane defaults otherwise (§5.1) -----------
-#    ifndef PS2_DRAIN_BUDGET_US
-#        define PS2_DRAIN_BUDGET_US 10000u  // soft cap on one housekeeping drain (§3.2)
+// Sleep tiers for the PS/2 servicing thread (§3.4). These replace the §3.2 drain
+// budget: the thread calls ps2_update once per wake and sleeps, so there is no
+// busy-wait left to bound. PS2_DRAIN_BUDGET_US is deliberately gone.
+//
+// The two fast tiers exist for DIFFERENT reasons - do not merge them:
+//
+//   TX_POLL (dev.busy != 0, a frame on the wire, ~0.71 ms). Polling cannot make
+//     progress here: ps2_update step 7 is gated on busy == 0. It is PROTOCOL
+//     SAFETY. This is the only window in which ps2out's `irq wait` can fire, i.e.
+//     the only window where the host can inhibit us mid-frame, stall the state
+//     machine, and start a race we must answer before it releases Clock. Budget at
+//     the spec floor is ~26-100 us (§3.4 "What happens when the host talks to us"),
+//     which today's blob-atomic drain meets only by accident, by spinning.
+//     RAISE if measurement shows the thread is starving the capsense scan; LOWER if
+//     a host misses abort servicing. Must stay >= CH_CFG_ST_TIMEDELTA (20 us).
+//
+//   GAP_POLL (bus idle, bytes still queued). Nothing is on the wire, `sendloop` is
+//     not executing, so NO abort is possible. Purely waiting out the driver's
+//     100 us inter-byte gap so step 7 can fire. This is THROUGHPUT, not safety.
+//
+//   IDLE_MS. Bounded by the spec's 20 ms command-response deadline, 4x margin. A
+//     keystroke never waits this long: the report callbacks signal the semaphore.
+#    ifndef PS2_THREAD_TX_POLL_US
+#        define PS2_THREAD_TX_POLL_US 50u    // frame on the wire (Case B window)
+#    endif
+#    ifndef PS2_THREAD_GAP_POLL_US
+#        define PS2_THREAD_GAP_POLL_US 100u  // inter-byte gap, intra- or inter-blob
+#    endif
+#    ifndef PS2_THREAD_IDLE_MS
+#        define PS2_THREAD_IDLE_MS 5u        // idle, vs the 20 ms response bound
+#    endif
+// Priority must be ABOVE the QMK main loop (the ChibiOS main thread, NORMALPRIO),
+// or we would only run when it blocks - which reproduces the coupling §3.4 exists
+// to remove. +1 is enough: nothing else in a non-split build sits between us and
+// HIGHPRIO. Stack: ps2_update has no recursion and small locals; 1024 is the
+// serial_protocol.c precedent for a protocol state machine, trim on measurement.
+#    ifndef PS2_THREAD_PRIO
+#        define PS2_THREAD_PRIO (NORMALPRIO + 1)
+#    endif
+#    ifndef PS2_THREAD_STACK
+#        define PS2_THREAD_STACK 1024
 #    endif
 #    ifndef PS2_USB_SETTLE_MS
 // How long USB may stay un-enumerated after boot before we conclude "no USB host"
@@ -111,27 +156,38 @@ static ps2_device s_ps2_dev;
 static uint8_t s_ps2_latest_state[PS2_KEYBOARD_STATE_SIZE_BYTES];
 
 // Set by the host_driver callbacks whenever they rewrite s_ps2_latest_state;
-// consumed in ps2_service. When clear we hand ps2_update NULL instead of the
+// consumed by the PS/2 thread. When clear we hand ps2_update NULL instead of the
 // bitmap, which skips its 32-byte diff - ~704 of the function's ~810 cycles
 // (~5.7 us of ~6.5 us at 125 MHz, measured from the -Os disassembly). That diff
 // is unconditional and finds nothing when the report has not moved, and the
-// drain loop below re-enters ps2_update many times per multi-byte key, so this
+// thread re-enters ps2_update every 50 us while a frame is on the wire, so this
 // is most of the cost of servicing PS/2 while typing.
 //
 // Correctness rests on two things, both easy to get wrong:
-//   - the flag is cleared in the SAME step that takes the snapshot. Clearing it
-//     afterwards would let a report arriving mid-diff be erased and lost.
+//   - the flag is cleared in the SAME critical section that takes the snapshot.
+//     Clearing it afterwards would let a report arriving mid-diff be erased and
+//     lost - a real dropped keystroke, not just a delayed one.
 //   - it is NOT consumed until the driver has finished BAT, because ps2_update
 //     ignores the bitmap entirely until then (its step 1 / step 2 are exclusive).
 //     Without that guard a key held through the 500 ms BAT window never emits.
 static bool s_ps2_state_dirty = false;
 
-// Snapshot handed to ps2_update, so the driver never reads the live bitmap the
-// report callbacks are writing. Today both run on the QMK main thread and the
-// copy is strictly speaking redundant; it is here because the snapshot + flag
-// clear must become one atomic step the moment PS/2 servicing moves to its own
-// thread, and that is easier to get right if the shape is already correct.
+// Snapshot handed to ps2_update, so the driver never reads the live bitmap while
+// the report callbacks are writing it. Owned by the PS/2 thread; only ever filled
+// inside the chSysLock below.
 static uint8_t s_ps2_state_snapshot[PS2_KEYBOARD_STATE_SIZE_BYTES];
+
+// Wake signal for the PS/2 thread: raised by the report callbacks so a keystroke
+// never waits out the idle tier. A BINARY SEMAPHORE specifically because it
+// LATCHES - a signal raised while the thread is running (rather than parked) is
+// remembered. QMK's own RP2040 PIO PS/2 host driver uses thread_reference_t +
+// osalThreadResumeI instead, which is lighter but silently no-ops on a NULL
+// reference; that is safe for its ISR-serving-a-parked-caller shape and would
+// drop reports here. Statically initialised (taken) so it is valid before the
+// thread or the host driver exist.
+static BSEMAPHORE_DECL(s_ps2_wake, true);
+static THD_WORKING_AREA(s_ps2_thread_wa, PS2_THREAD_STACK);
+static THD_FUNCTION(ps2_thread, arg);   // defined below, created in ps2_enter_ps2_mode
 
 typedef enum {
     PS2_MODE_UNDECIDED = 0,  // initial sentinel; overwritten by the boot-time decision
@@ -144,31 +200,55 @@ static uint32_t   s_ps2_last_bat_ms   = 0;  // last 0xAA re-announce (§7.5)
 
 // --- host_driver_t callbacks (§3.1) -------------------------------------------
 //
-// These fire (from QMK's report pipeline) whenever the resolved report changes.
-// They only *capture* the pressed set into s_ps2_latest_state - cheap, no PIO work;
-// the actual wire traffic + edge detection + typematic happen in ps2_update,
-// driven from the housekeeping poll below.
+// These fire on the QMK MAIN THREAD (from the report pipeline) whenever the
+// resolved report changes. They only *capture* the pressed set and wake the PS/2
+// thread - cheap, no PIO work; the actual wire traffic + edge detection +
+// typematic happen in ps2_update, on the PS/2 thread (§3.4).
+
+// Hand a freshly built pressed-set to the PS/2 thread. Both callbacks below build
+// into a LOCAL first and publish through here, rather than editing
+// s_ps2_latest_state in place: they work by clear-then-set-bits, so an in-place
+// build is briefly all-zeros, and the thread reading at that instant would see
+// every held key released and emit a burst of spurious breaks.
+//
+// The copy and the dirty flag are one critical section - see s_ps2_state_dirty.
+// chSysLock on ARMv6-M masks all interrupts (no BASEPRI), so this is ~0.5 us of
+// latency added to the system tick and USB; a 32-byte memcpy is worth that.
+// chBSemSignal is deliberately OUTSIDE the lock: it is the normal-context API,
+// not the I-class one.
+static void ps2_publish_state(const uint8_t *next) {
+    chSysLock();
+    memcpy(s_ps2_latest_state, next, sizeof(s_ps2_latest_state));
+    s_ps2_state_dirty = true;
+    chSysUnlock();
+
+    chBSemSignal(&s_ps2_wake);
+}
 
 // 6KRO: report is mods (bitfield) + up to 6 held usage codes.
 static void ps2_send_6kro(report_keyboard_t *report) {
-    ps2_key_state_clear(s_ps2_latest_state);
+    uint8_t next[PS2_KEYBOARD_STATE_SIZE_BYTES];
+
+    ps2_key_state_clear(next);
     for (uint8_t i = 0; i < KEYBOARD_REPORT_KEYS; i++) {
         uint8_t code = report->keys[i];
         if (code) {
-            ps2_key_state_set(s_ps2_latest_state, code);
+            ps2_key_state_set(next, code);
         }
     }
-    ps2_key_state_set_mods(s_ps2_latest_state, report->mods);
-    s_ps2_state_dirty = true;
+    ps2_key_state_set_mods(next, report->mods);
+    ps2_publish_state(next);
 }
 
 // NKRO: report->bits[] is already a bit-per-HID-usage bitmap, identical layout to
 // our own - a straight 30-byte copy, then fold in the separate modifier byte.
 static void ps2_send_nkro(report_nkro_t *report) {
-    ps2_key_state_clear(s_ps2_latest_state);
-    memcpy(s_ps2_latest_state, report->bits, NKRO_REPORT_BITS);
-    ps2_key_state_set_mods(s_ps2_latest_state, report->mods);
-    s_ps2_state_dirty = true;
+    uint8_t next[PS2_KEYBOARD_STATE_SIZE_BYTES];
+
+    ps2_key_state_clear(next);
+    memcpy(next, report->bits, NKRO_REPORT_BITS);
+    ps2_key_state_set_mods(next, report->mods);
+    ps2_publish_state(next);
 }
 
 // A PS/2 keyboard has no pointer / consumer / system output: swallow these.
@@ -223,15 +303,26 @@ static void ps2_enter_ps2_mode(void) {
     // state in dev.leds itself, which ps2_kb_leds() reads directly.
     ps2_initialize(&s_ps2_dev, PS2_PIO, PS2_SM, PS2_DATA_PIN, PS2_CLOCK_PIN, NULL);
 
+    s_ps2_last_bat_ms = timer_read32();
+
+    // Start PS/2 servicing on its own thread (§3.4). Created here, and ONLY here,
+    // so it never exists in haptic mode. Ordering matters twice over:
+    //   - after ps2_initialize, or the thread would poll a PIO that is not running;
+    //   - before host_set_driver, so the report callbacks cannot signal / dirty the
+    //     state before there is anything to consume it. (The semaphore itself is
+    //     statically initialised, so an early signal would be harmless anyway - but
+    //     relying on that would be relying on an accident.)
+    chThdCreateStatic(s_ps2_thread_wa, sizeof(s_ps2_thread_wa),
+                      PS2_THREAD_PRIO, ps2_thread, NULL);
+
     // Ask QMK to push resolved reports to us instead of USB. NOTE: this initial
     // install is clobbered moments later by protocol_post_init()'s
-    // host_set_driver(&chibios_driver) (see the boot-order note in ps2_service),
-    // so ps2_service re-asserts it every loop. Kept here so the intent is explicit
-    // and the driver is installed as early as possible.
+    // host_set_driver(&chibios_driver) (see the boot-order note in
+    // ps2_service_main), so ps2_service_main re-asserts it every loop. Kept here so
+    // the intent is explicit and the driver is installed as early as possible.
     host_set_driver(&s_ps2_host_driver);
 
-    s_ps2_last_bat_ms = timer_read32();
-    s_ps2_mode        = PS2_MODE_PS2;
+    s_ps2_mode = PS2_MODE_PS2;
 
 #    ifdef PS2_FORCE_ENABLE
     xprintf("\n[ps2] entered PS/2 mode (FORCED, USB console live). clk=GP%u data=GP%u\n",
@@ -286,8 +377,12 @@ static void ps2_debug_drain_trace(void) {
 }
 #    endif  // PS2_FORCE_ENABLE
 
-// --- per-loop PS/2 servicing (§3.2) -------------------------------------------
-static void ps2_service(void) {
+// --- main-thread housekeeping (§3.4) ------------------------------------------
+//
+// Everything here concerns QMK's own plumbing, not the PS/2 wire, so it stays on
+// the QMK main thread. The protocol half lives in ps2_service_protocol() and is
+// called ONLY from the PS/2 thread - see the single-owner note there.
+static void ps2_service_main(void) {
     // Re-assert our host driver if anything has replaced it. This is REQUIRED, not
     // defensive: QMK's boot order is protocol_pre_init -> keyboard_init ->
     // protocol_post_init (quantum/main.c). Our latch runs inside keyboard_init
@@ -308,6 +403,11 @@ static void ps2_service(void) {
     // "no keys" fault. keys = number of usage bits currently set in the resolved
     // report we've been handed (press a key on the F77 and this should rise); drv =
     // 1 iff our PS/2 host driver is the installed one (0 => still clobbered).
+    //
+    // Reads s_ps2_dev unlocked while the PS/2 thread mutates it, so startup/busy/
+    // sent/qpend here are a torn sample, not a consistent snapshot - fine for a
+    // 1 Hz debug print, but do not reason about invariants across these fields.
+    // s_ps2_latest_state is safe: this runs on the main thread, which is its writer.
     static uint32_t s_hb_ms = 0;
     if (timer_elapsed32(s_hb_ms) >= 1000u) {
         s_hb_ms = timer_read32();
@@ -335,8 +435,14 @@ static void ps2_service(void) {
                 (unsigned)s_ps2_dev.busy, (unsigned)s_ps2_dev.sent, clk, dat);
     }
 
-    // Report the first host contact once, then stream the byte trace. Both run at
-    // a blob boundary (before the drain loop), never mid-sequence.
+    // Report the first host contact once, then stream the byte trace.
+    //
+    // NOTE these ran at a blob boundary when servicing was inline; they now run on
+    // the main thread, concurrently with the PS/2 thread, so a trace dump can land
+    // mid-sequence. That is acceptable - the trace ring is only read here, and the
+    // whole block is PS2_FORCE_ENABLE-only. It is deliberately NOT moved into the
+    // PS/2 thread: xprintf would put a printf-sized stack requirement on a thread
+    // sized for ps2_update, and console I/O has no business in a 50 us poll.
     static bool announced_contact = false;
     if (!announced_contact && s_ps2_dev.host_contacted) {
         announced_contact = true;
@@ -344,7 +450,24 @@ static void ps2_service(void) {
     }
     ps2_debug_drain_trace();
 #    endif
+}
 
+// --- PS/2 protocol servicing - PS/2 THREAD ONLY (§3.4) ------------------------
+//
+// SINGLE OWNER: ps2_update is a state machine with no internal locking, so this
+// must never be called from anywhere but ps2_thread(). housekeeping_task_kb no
+// longer touches it. The BAT re-announce lives here rather than on the main thread
+// for the same reason - ps2_announce_bat pushes onto dev->queue, which ps2_update
+// pops, and ps2_scancode_queue.h documents that single-producer/single-consumer
+// assumption explicitly. Keeping both on this side preserves it instead of
+// quietly breaking it.
+//
+// Exactly ONE ps2_update per call. The old §3.2 blob-atomic drain loop is gone:
+// its job was to flush a multi-byte key at the wire floor despite a multi-ms main
+// loop, and the sleep tiers now do that without blocking anything. ps2_update
+// emits at most one byte and then waits out the ~0.71 ms frame; the thread simply
+// comes back when that frame is due to be over.
+static void ps2_service_protocol(void) {
     // Re-announce BAT-complete until the host first talks to us. Our first 0xAA
     // lands seconds after power-on (boot + calibration + BAT delay), far past the
     // spec window, so a single announce can be missed; repeat until host_contacted.
@@ -353,33 +476,57 @@ static void ps2_service(void) {
         s_ps2_last_bat_ms = timer_read32();
     }
 
-    // Take the changed-latch and the snapshot in one step, so a report landing
-    // between the two cannot be erased (see s_ps2_state_dirty). Held off until
-    // BAT is done, because ps2_update discards the bitmap until then.
+    // Take the changed-latch and the snapshot in ONE critical section, so a report
+    // landing between the two cannot be erased (see s_ps2_state_dirty). Held off
+    // until BAT is done, because ps2_update discards the bitmap until then.
     const uint8_t *state = NULL;
+    chSysLock();
     if (s_ps2_state_dirty && ps2_startup_complete(&s_ps2_dev)) {
         memcpy(s_ps2_state_snapshot, s_ps2_latest_state, sizeof(s_ps2_state_snapshot));
         s_ps2_state_dirty = false;
         state             = s_ps2_state_snapshot;
     }
+    chSysUnlock();
 
-    // Bounded, blob-atomic drain. ps2_update emits at most one byte per call and
-    // then must wait out the ~1 ms frame + inter-byte gap, so we call it repeatedly
-    // to flush a multi-byte key at the wire floor instead of one byte per slow loop.
-    // The time budget is honoured only at blob boundaries (ps2_tx_in_blob false), so
-    // a multi-byte sequence is never split mid-flight - only the gap *between* keys
-    // can be deferred, which the protocol allows.
-    uint32_t start = ps2_now_us();
-    do {
-        ps2_update(&s_ps2_dev, ps2_now_us(), state);
-        // Only the first pass carries the bitmap: it has already been diffed into
-        // make/break events, and every later pass in this drain is here purely to
-        // push bytes. Re-passing it would repeat the 32-byte diff - the dominant
-        // cost of ps2_update - once per byte of the blob, for no result.
-        state = NULL;
-    } while (ps2_tx_in_blob(&s_ps2_dev) ||
-             (ps2_tx_pending(&s_ps2_dev) &&
-              (uint32_t)(ps2_now_us() - start) < PS2_DRAIN_BUDGET_US));
+    ps2_update(&s_ps2_dev, ps2_now_us(), state);
+}
+
+// How long the thread may sleep before it must look at the bus again. See the
+// PS2_THREAD_*_US block near the top for why the two fast tiers differ - the
+// short one is protocol safety, the longer one is throughput.
+static sysinterval_t ps2_thread_delay(void) {
+    // A frame is on the wire (or the host is holding clock low - dev.busy bit0 is
+    // also raised at receivecheck). Step 7 is gated on busy == 0 so we cannot make
+    // progress; we are here to catch a host inhibit before it releases Clock.
+    if (s_ps2_dev.busy != 0) {
+        return TIME_US2I(PS2_THREAD_TX_POLL_US);
+    }
+    // Bus idle with bytes still to go: waiting out the driver's inter-byte gap.
+    // Deliberately NOT ps2_tx_in_blob - that stays true across a blob's internal
+    // gaps too, so it would pull those into the 50 us tier for no reason, and
+    // ps2_tx_pending already covers everything it would catch.
+    if (ps2_tx_pending(&s_ps2_dev)) {
+        return TIME_US2I(PS2_THREAD_GAP_POLL_US);
+    }
+    return TIME_MS2I(PS2_THREAD_IDLE_MS);
+}
+
+// The thread. Never returns: CH_CFG_USE_WAITEXIT is FALSE in this ChibiOS config,
+// so there is no chThdWait() and nothing may join it.
+static THD_FUNCTION(ps2_thread, arg) {
+    (void)arg;
+    // No-op here - CH_CFG_USE_REGISTRY is FALSE, so this compiles to (void)name
+    // (chregistry.h). Kept because it is the tree's idiom and costs nothing; do
+    // not expect to see the name in a debugger.
+    chRegSetThreadName("ps2");
+
+    while (true) {
+        ps2_service_protocol();
+        // Wakes on whichever comes first: the deadline, or a report change
+        // signalled from ps2_publish_state(). The timeout is the safety net - if
+        // the signal path ever breaks, PS/2 goes slow rather than silent.
+        chBSemWaitTimeout(&s_ps2_wake, ps2_thread_delay());
+    }
 }
 
 // --- QMK hooks -----------------------------------------------------------------
@@ -413,11 +560,17 @@ void keyboard_post_init_kb(void) {
 }
 
 void housekeeping_task_kb(void) {
-    // Only PS/2 mode needs periodic servicing; HAPTIC mode leaves the default USB host
-    // driver untouched. The mode was already latched in keyboard_post_init_kb, so there
-    // is no UNDECIDED state to poll here.
+    // Only PS/2 mode needs servicing; HAPTIC mode leaves the default USB host driver
+    // untouched. The mode was already latched in keyboard_post_init_kb, so there is
+    // no UNDECIDED state to poll here.
+    //
+    // ONLY the main half. The protocol half (ps2_update, BAT, the snapshot) belongs
+    // to the PS/2 thread and must not be re-entered from here - see the single-owner
+    // note on ps2_service_protocol(). This is the change that gives the matrix scan
+    // its period back: the loop no longer busy-waits up to 10 ms draining bytes, nor
+    // blocks for the ~9 ms a committed Pause blob takes.
     if (s_ps2_mode == PS2_MODE_PS2) {
-        ps2_service();
+        ps2_service_main();
     }
 }
 
