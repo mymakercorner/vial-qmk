@@ -38,6 +38,15 @@
  */
 typedef void (*ps2_rx_handler)(uint8_t event, uint8_t value);
 
+// Phases of dev->startup, the power-on BAT sequence handled by ps2_update.
+// Public because ps2_startup_complete() below is part of the NULL-keyboard_state
+// contract on ps2_update, and a caller cannot honour that contract blind.
+enum ps2_startup_phase {
+    PS2_STARTUP_DONE = 0,   // BAT-complete already announced; normal operation
+    PS2_STARTUP_INIT = 1,   // just powered on; capture the clock on the first poll
+    PS2_STARTUP_WAIT = 2,   // waiting out the BAT delay before sending 0xAA
+};
+
 typedef struct {
     PIO      pio;
     uint     sm;
@@ -56,7 +65,7 @@ typedef struct {
     uint16_t delay_ms;          // typematic delay before repeat begins (0xF3-decoded)
     uint8_t  repeat_key;        // HID code of the key currently repeating (0 = none)
     uint32_t repeat_at_us;      // when the next typematic make is due (valid if repeat_key)
-    uint8_t  startup;           // power-on BAT phase (see ps2_startup_phase in the .c)
+    uint8_t  startup;           // power-on BAT phase (see enum ps2_startup_phase above)
     uint8_t  host_contacted;    // set once any valid byte has been received from the host
     uint32_t bat_due_us;        // when the power-on 0xAA (BAT-complete) is due to be sent
     uint8_t  scs3_keymode[256]; // Set-3 per-key mode bits (typematic/break); read only when current_set == 3
@@ -104,6 +113,20 @@ void ps2_announce_bat(ps2_device *dev);
  *     previous call to produce the make/break edges the PS/2 protocol needs, so
  *     the driver only has to report which keys are down; build it with the
  *     helpers below.
+ *
+ *     Pass NULL to mean "the pressed-set has not changed since the last call
+ *     that supplied one". The diff is then skipped and every other step (host
+ *     RX, typematic, the send path) runs exactly as normal. This is purely an
+ *     optimisation, and an OPTIONAL one - a caller that always passes the bitmap
+ *     is correct, just slower. It matters because the diff is unconditional over
+ *     all 32 bytes and dominates the call: measured from the -Os ARM build it is
+ *     ~704 of ~810 cycles (~5.7 us of ~6.5 us at 125 MHz), and a firmware that
+ *     polls faster than its report rate - a drain loop, or a dedicated servicing
+ *     thread - repeats that work on every poll for no result.
+ *
+ *     A caller using NULL must latch "changed" itself, and must clear that latch
+ *     in the same atomic step as taking the snapshot it passes in. Clearing it
+ *     afterwards races: a change arriving mid-diff would be erased and lost.
  * When several keys change between calls, the highest HID usage that went down
  * becomes the typematic key.
  */
@@ -130,6 +153,15 @@ static inline bool ps2_tx_in_blob(const ps2_device *dev) {
 // progress. When this is false all key output has drained.
 static inline bool ps2_tx_pending(const ps2_device *dev) {
     return !ps2_scancode_queue_empty(&dev->queue) || dev->sent != 0;
+}
+
+// True once the power-on BAT announcement has been made. Until then ps2_update
+// ignores keyboard_state completely (its step 1 and step 2 are exclusive), so a
+// caller using the NULL "unchanged" contract must not consume its changed-latch
+// before this returns true - a key held through the 500 ms BAT window would be
+// latched, cleared, and then never diffed.
+static inline bool ps2_startup_complete(const ps2_device *dev) {
+    return dev->startup == PS2_STARTUP_DONE;
 }
 
 // --- Helpers to build the bitmap ps2_update expects --------------------------

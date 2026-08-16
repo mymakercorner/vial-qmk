@@ -25,12 +25,8 @@
 // this far after its first poll (the first moment it has a clock reading).
 #define PS2_BAT_DELAY_US 500000u
 
-// Phases of dev->startup, the power-on BAT sequence handled by ps2_update.
-enum ps2_startup_phase {
-    PS2_STARTUP_DONE = 0,   // BAT-complete already announced; normal operation
-    PS2_STARTUP_INIT = 1,   // just powered on; capture the clock on the first poll
-    PS2_STARTUP_WAIT = 2,   // waiting out the BAT delay before sending 0xAA
-};
+// enum ps2_startup_phase (dev->startup) now lives in hid_to_ps2.h - callers need
+// it for ps2_startup_complete(), part of the NULL-keyboard_state contract.
 
 static void ps2_set_defaults(ps2_device *dev);   // defined with the host-command handler below
 
@@ -465,8 +461,18 @@ void ps2_update(ps2_device *dev, uint32_t now_us, const uint8_t *keyboard_state)
             ps2_queue_byte(dev, PS2_RSP_SELFTEST_OK);
             dev->startup = PS2_STARTUP_DONE;
         }
-    } else {
+    } else if (keyboard_state != NULL) {
         // 2. Turn the current key-state snapshot into make/break events (queued).
+        //    NULL means "unchanged since the last call that passed a bitmap", so
+        //    the diff is skipped - it is ~704 of this function's ~810 cycles and
+        //    finds nothing when the report has not moved. See ps2_update in
+        //    hid_to_ps2.h for the contract (the caller owns the changed-latch and
+        //    must clear it atomically with taking its snapshot).
+        //
+        //    Note this sits in the `else` of the startup check, so during the BAT
+        //    delay the bitmap is ignored whether or not it is NULL. A caller that
+        //    latches must therefore not consume its latch until dev->startup is
+        //    PS2_STARTUP_DONE, or a key pressed during those first 500 ms is lost.
         ps2_send_state(dev, now_us, keyboard_state);
     }
 

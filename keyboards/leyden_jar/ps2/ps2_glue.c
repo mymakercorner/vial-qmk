@@ -110,6 +110,29 @@ static ps2_device s_ps2_dev;
 // consumed by ps2_update. 32-byte HID-usage bitmap (see hid_to_ps2.h).
 static uint8_t s_ps2_latest_state[PS2_KEYBOARD_STATE_SIZE_BYTES];
 
+// Set by the host_driver callbacks whenever they rewrite s_ps2_latest_state;
+// consumed in ps2_service. When clear we hand ps2_update NULL instead of the
+// bitmap, which skips its 32-byte diff - ~704 of the function's ~810 cycles
+// (~5.7 us of ~6.5 us at 125 MHz, measured from the -Os disassembly). That diff
+// is unconditional and finds nothing when the report has not moved, and the
+// drain loop below re-enters ps2_update many times per multi-byte key, so this
+// is most of the cost of servicing PS/2 while typing.
+//
+// Correctness rests on two things, both easy to get wrong:
+//   - the flag is cleared in the SAME step that takes the snapshot. Clearing it
+//     afterwards would let a report arriving mid-diff be erased and lost.
+//   - it is NOT consumed until the driver has finished BAT, because ps2_update
+//     ignores the bitmap entirely until then (its step 1 / step 2 are exclusive).
+//     Without that guard a key held through the 500 ms BAT window never emits.
+static bool s_ps2_state_dirty = false;
+
+// Snapshot handed to ps2_update, so the driver never reads the live bitmap the
+// report callbacks are writing. Today both run on the QMK main thread and the
+// copy is strictly speaking redundant; it is here because the snapshot + flag
+// clear must become one atomic step the moment PS/2 servicing moves to its own
+// thread, and that is easier to get right if the shape is already correct.
+static uint8_t s_ps2_state_snapshot[PS2_KEYBOARD_STATE_SIZE_BYTES];
+
 typedef enum {
     PS2_MODE_UNDECIDED = 0,  // initial sentinel; overwritten by the boot-time decision
     PS2_MODE_HAPTIC,         // USB present -> normal USB keyboard + haptic; PS/2 never inits
@@ -136,6 +159,7 @@ static void ps2_send_6kro(report_keyboard_t *report) {
         }
     }
     ps2_key_state_set_mods(s_ps2_latest_state, report->mods);
+    s_ps2_state_dirty = true;
 }
 
 // NKRO: report->bits[] is already a bit-per-HID-usage bitmap, identical layout to
@@ -144,6 +168,7 @@ static void ps2_send_nkro(report_nkro_t *report) {
     ps2_key_state_clear(s_ps2_latest_state);
     memcpy(s_ps2_latest_state, report->bits, NKRO_REPORT_BITS);
     ps2_key_state_set_mods(s_ps2_latest_state, report->mods);
+    s_ps2_state_dirty = true;
 }
 
 // A PS/2 keyboard has no pointer / consumer / system output: swallow these.
@@ -328,6 +353,16 @@ static void ps2_service(void) {
         s_ps2_last_bat_ms = timer_read32();
     }
 
+    // Take the changed-latch and the snapshot in one step, so a report landing
+    // between the two cannot be erased (see s_ps2_state_dirty). Held off until
+    // BAT is done, because ps2_update discards the bitmap until then.
+    const uint8_t *state = NULL;
+    if (s_ps2_state_dirty && ps2_startup_complete(&s_ps2_dev)) {
+        memcpy(s_ps2_state_snapshot, s_ps2_latest_state, sizeof(s_ps2_state_snapshot));
+        s_ps2_state_dirty = false;
+        state             = s_ps2_state_snapshot;
+    }
+
     // Bounded, blob-atomic drain. ps2_update emits at most one byte per call and
     // then must wait out the ~1 ms frame + inter-byte gap, so we call it repeatedly
     // to flush a multi-byte key at the wire floor instead of one byte per slow loop.
@@ -336,7 +371,12 @@ static void ps2_service(void) {
     // can be deferred, which the protocol allows.
     uint32_t start = ps2_now_us();
     do {
-        ps2_update(&s_ps2_dev, ps2_now_us(), s_ps2_latest_state);
+        ps2_update(&s_ps2_dev, ps2_now_us(), state);
+        // Only the first pass carries the bitmap: it has already been diffed into
+        // make/break events, and every later pass in this drain is here purely to
+        // push bytes. Re-passing it would repeat the 32-byte diff - the dominant
+        // cost of ps2_update - once per byte of the blob, for no result.
+        state = NULL;
     } while (ps2_tx_in_blob(&s_ps2_dev) ||
              (ps2_tx_pending(&s_ps2_dev) &&
               (uint32_t)(ps2_now_us() - start) < PS2_DRAIN_BUDGET_US));
