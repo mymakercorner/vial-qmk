@@ -59,11 +59,40 @@ void ps2_platform_init(PIO pio, uint sm, uint data_pin, uint clock_pin) {
     //    after its own palSetLineMode.
     ps2_platform_reclaim_pins(pio, data_pin, clock_pin);
 
-    // 3. Load the program, patch the clock-wait to an ABSOLUTE gpio (identical to
-    //    the pico path - the patch is portable PIO, only the pin mux differs), then
-    //    configure + start the state machine. ps2out_program_init calls
-    //    pio_gpio_init, which is fine under this ChibiOS port.
+    // 3. Load the program into the PIO's instruction memory. ps2out_program_init
+    //    below only configures the state machine (clkdiv/pins/wrap) - it does not
+    //    write instructions - so this add is required or the SM runs uninitialised
+    //    memory. ps2out is 32 instructions and fills the memory, so offset is
+    //    always 0 and it is the block's only program.
     uint offset = pio_add_program(pio, &ps2out_program);
+
+    // 4. Rewrite instruction 4 from `wait 1 pin, 1` to `wait 1 gpio, clock_pin`.
+    //
+    //    THIS IS LOAD-BEARING, not an optimisation. ps2out.pio waits for clock to
+    //    go high with `wait 1 pin, 1`, but `pin, N` is relative to the state
+    //    machine's IN base, and ps2out_program_init sets that base to DATA
+    //    (sm_config_set_in_pins(&c, dat) - the `in pins, 1` instructions must read
+    //    data). So `pin, 1` assembles to "data + 1" and bakes in an assumption that
+    //    clock == data + 1. That is true for upstream ps2x2pico, and QMK's own PIO
+    //    PS/2 *host* driver hard-enforces it (#error if data+1 != clock). It is
+    //    FALSE here: the PS/2 daughterboard shares the solenoid connector, giving
+    //    clock = GP28 and data = GP29, i.e. clock is data MINUS one. Unpatched, the
+    //    SM would wait on GP30 and never proceed.
+    //
+    //    Encoding: WAIT = 0b001 (bits 15:13) | polarity 1 = wait-for-high (bit 7) |
+    //    source 0b00 = absolute GPIO (bits 6:5) | index = the GPIO number (bits 4:0).
+    //    Same opcode, same single cycle - only the pin addressing mode changes, so
+    //    there is no timing effect. Identical to the bare-Pico path in the driver
+    //    repo's ps2_platform_pico.c; the patch is portable PIO, only the pin muxing
+    //    above differs between the two platforms.
+    //
+    //    Fragile in one way: the index 4 is a bare literal with no assertion behind
+    //    it. If ps2out.pio ever gains or loses an instruction ahead of that wait,
+    //    this silently rewrites the WRONG instruction. ps2out.pio carries a matching
+    //    "HEADS UP" comment; keep the two in step.
     pio->instr_mem[offset + 4] = (uint16_t)(0x2080u | (clock_pin & 0x1Fu));
+
+    // 5. Configure and start the state machine. ps2out_program_init calls
+    //    pio_gpio_init, which is fine under this ChibiOS port.
     ps2out_program_init(pio, sm, offset, data_pin, clock_pin);
 }

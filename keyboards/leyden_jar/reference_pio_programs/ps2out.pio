@@ -8,6 +8,30 @@
 .program ps2out
 .side_set 1 opt pindirs
 
+// HEADS UP: one instruction below is NOT what runs on hardware.
+//
+// Offset 4, `wait 1 pin, 1`, is OVERWRITTEN at init by ps2_platform_init
+// (ps2_platform_pico.c / ps2_platform_chibios.c) with an absolute-GPIO wait:
+//
+//     wait 1 pin, 1   ->   wait 1 gpio, <clock_pin>      (0x2080 | clock_pin)
+//
+// Why: `pin, N` is relative to the state machine's IN base, and
+// sm_config_set_in_pins puts that base on DATA. So as assembled, `pin, 1`
+// means data+1 - the program silently assumes clock == data+1. That holds
+// for upstream ps2x2pico, but not here: this project wires clock=GP28,
+// data=GP29, so clock is data MINUS one and the unpatched instruction would
+// wait on GP30 forever. Patching to an absolute GPIO lets any two pins work.
+// (QMK's own PIO PS/2 host driver takes the other route and just refuses to
+// build unless clock == data+1.)
+//
+// Consequences if you edit this program:
+//   - Keep that wait at offset 4, or update the index in BOTH platform files.
+//     The patch is a bare `instr_mem[offset + 4] = ...` with no assertion, so
+//     inserting an instruction above it silently corrupts a different one.
+//   - The committed ps2out.pio.h must be regenerated to match this file.
+//   - All 32 instruction slots are in use (see .length = 32 in ps2out.pio.h),
+//     so nothing can be added here without removing something first.
+
 restart:
   set    pindirs, 0             [1] // set clock to input mode
   irq    clear 0 rel     side 0     // clear busy flag, set data to input mode
@@ -15,7 +39,8 @@ restart:
 receivecheck:
   jmp    pin, sendcheck             // if clock is high, see if we have data to send
   irq    nowait 0 rel               // clock is being pulled low, set busy flag
-  wait   1 pin, 1                   // wait for clock to be pulled high
+  wait   1 pin, 1                   // wait for clock high - PATCHED at init to
+                                    // `wait 1 gpio, <clock>`; see HEADS UP above
 
   // we are not sending, look for a start bit (clock high, data low)
   in     pins, 1                    // read in from data
