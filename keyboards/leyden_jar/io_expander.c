@@ -26,6 +26,21 @@
 #define IO_EXPANDER_LED1   (1<<5)
 #define IO_EXPANDER_LED2   (1<<6)
 
+/* PS/2 daughterboard presence, the one INPUT pin. The daughterboard feeds this pin
+ * ~3.33V through a resistor divider off its 5V rail, taken upstream of the
+ * daughterboard's current limiter; the main board's 47k pull-down holds the pin low
+ * when no daughterboard is plugged in.
+ *
+ * INTENDED meaning: "a live PS/2 host is powering the daughterboard", i.e. USB's 5V
+ * cannot reach the divider. That is what the mode latch in ps2_glue.c assumes.
+ *
+ * On daughterboard revisions BEFORE the 5V-isolation fix it means only "a
+ * daughterboard is ATTACHED": the two 5V rails turned out not to be isolated
+ * (verified on hardware 2026-08-17 -- daughterboard attached, no PS/2 cable at all,
+ * USB alone pulled the pin high). The firmware is identical either way; on an
+ * unfixed board the daughterboard must be unplugged to use the USB connector. */
+#define IO_EXPANDER_PS2_DETECT (1<<3)
+
 static uint8_t s_current_io_expander_state;
 static bool s_led0;
 static bool s_led1;
@@ -58,13 +73,17 @@ int io_expander_init()
         return 0;
     }
 
-    /* We set all pins to output type
+    /* We set all pins to output type, except the PS/2 detect pin
      * Write Control Register command is 2 bytes
      * First byte contains 0x03 that tell that we will update the Control Register
-     * Second byte contains the control register value, here 0x00 to tell that all IO pins are configured as output */
+     * Second byte contains the control register value, one bit per IO pin, 0 for output and 1 for input.
+     * Only IO_EXPANDER_PS2_DETECT is an input; it is set on every board and not just the PS/2 ones,
+     * because the main board's pull-down keeps it at a defined level whether or not a daughterboard
+     * is plugged in. Pins configured as input ignore the Output Port Register, so
+     * io_expander_set_output_pins_level() can keep writing the whole byte. */
     uint8_t write_data[2];
     write_data[0] = 0x03;
-    write_data[1] = 0x00;
+    write_data[1] = IO_EXPANDER_PS2_DETECT;
     ret = i2c_transmit(IO_EXPANDER_I2C_WRITE, write_data, 2, IO_EXPANDER_I2C_TIMEOUT);
     if (ret != I2C_STATUS_SUCCESS) {
         return 0;
@@ -81,6 +100,22 @@ int io_expander_init()
     s_led2 = false;
 
     return 1;
+}
+
+bool io_expander_is_ps2_present(void) {
+    /* Read Input Port Register command reads back register 0x00, which holds the live
+     * level of every IO pin. See IO_EXPANDER_PS2_DETECT above for what drives it.
+     * On any I2C failure we report "not present": the caller uses this to decide
+     * between USB and PS/2 mode, and a failed read must never be what selects PS/2
+     * (that would take the board off USB and leave it unusable). */
+    uint8_t input_level;
+
+    i2c_status_t ret = i2c_read_register(IO_EXPANDER_I2C_ADDR, 0x00, &input_level, 1, IO_EXPANDER_I2C_TIMEOUT);
+    if (ret != I2C_STATUS_SUCCESS) {
+        return false;
+    }
+
+    return (input_level & IO_EXPANDER_PS2_DETECT) != 0;
 }
 
 void io_expander_set_led0_status(bool enable) {

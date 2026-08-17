@@ -43,7 +43,7 @@
                                // say so - same as platforms/chibios/drivers/serial.c.
 #    include "quantum.h"       // QMK core: hooks, timer_read32/elapsed32, led_t, report_*_t
 #    include "host.h"          // host_set_driver, host_driver_t
-#    include "usb_util.h"      // usb_connected_state
+#    include "io_expander.h"   // io_expander_is_ps2_present (boot-time mode select)
 #    include "usb_device_state.h"  // struct usb_device_state (notify hook signature)
 #    include "haptic.h"        // haptic_disable
 #    include "solenoid.h"      // solenoid_shutdown
@@ -128,16 +128,6 @@ static inline uint32_t ps2_now_us(void) {
 #    endif
 #    ifndef PS2_THREAD_STACK
 #        define PS2_THREAD_STACK 1024
-#    endif
-#    ifndef PS2_USB_SETTLE_MS
-// How long USB may stay un-enumerated after boot before we conclude "no USB host"
-// and latch to PS/2 (§3.3). MUST be non-zero: usb_connected_state() only reads true
-// after enumeration, which is not guaranteed by the first housekeeping tick. With a
-// 0 window a single early false reading latches to PS/2 even though USB *is* present
-// (host_set_driver then steals keyboard reports off USB -> keys dead, haptic off).
-// The latch re-checks every tick and picks HAPTIC the instant USB comes up, so this
-// is only the worst-case wait a genuine PS/2-powered board takes before starting.
-#        define PS2_USB_SETTLE_MS 2000u     // mirrors SPLIT_USB_TIMEOUT
 #    endif
 #    ifndef PS2_REANNOUNCE_MS
 #        define PS2_REANNOUNCE_MS 1000u     // resend 0xAA cadence until host contact (§7.5)
@@ -535,24 +525,41 @@ static THD_FUNCTION(ps2_thread, arg) {
 // *after* haptic_init (keyboard.c ~541): the shared GP28/GP29 pins are already owned
 // by haptic, so it is safe to take them for PS/2. Deciding any earlier (e.g. in
 // matrix_init_custom, keyboard.c ~475) would be undone when haptic_init later re-grabs
-// those pins. We block up to PS2_USB_SETTLE_MS for USB to enumerate - ChibiOS services
-// USB from irq/threads during the wait, so usb_connected_state() still updates - the
-// same idiom QMK split keyboards use for USB detection in split_pre_init.
+// those pins. The IO expander is ready by then either way - io_expander_init() runs
+// from leyden_jar_init() inside matrix_init_custom, well before this hook.
+//
+// The mode comes from a HARDWARE PRESENCE PIN, not from USB. IO expander pin 3 is
+// high only when a live PS/2 host is powering the daughterboard (the divider is
+// upstream of the daughterboard's current limiter, so USB 5V cannot reach it), and
+// the main board's 47k pull-down holds it low otherwise. The user chooses the mode
+// physically, by which of the two connectors they plug the cable into.
+//
+// This REPLACED a timing-based latch that spun up to PS2_USB_SETTLE_MS (2000 ms)
+// waiting for usb_connected_state() and inferred "no USB, therefore PS/2" from the
+// timeout. Do not go back to that shape. It cost every PS/2 boot a full 2 s before
+// the first BAT could go out, and being wrong about the window was silent and
+// nasty: an earlier 0 ms default read USB as absent on a cold power-cycle merely
+// because enumeration had not finished, latched PS/2 with USB actually present, and
+// host_set_driver then took the reports away from USB - keys and solenoid dead,
+// while VIA/raw-HID still answered and hid the cause. The presence pin decides the
+// same question with no window to get wrong.
+//
+// Note both connections CAN be live at once, but only with the case open, which is
+// a bench-only condition: PS/2 output plus a working USB console for xprintf. It is
+// not a configuration any user reaches, so the rest of the file still treats USB
+// device-state events in PS/2 mode as rare (see notify_usb_device_state_change_kb).
 void keyboard_post_init_kb(void) {
 #    ifdef PS2_FORCE_ENABLE
-    // DEBUG: ignore USB so the USB-CDC console stays live for trace readout while PS/2
-    // runs (host_set_driver only steals keyboard reports, not the console endpoint).
-    // Never enable in a production build.
+    // DEBUG: ignore the presence pin and always come up in PS/2 mode, for a bench
+    // board with no daughterboard fitted or a suspect detect pin. Never enable in a
+    // production build. (This used to exist to bypass the USB check and keep the
+    // console alive; the presence pin now gives that for free.)
     ps2_enter_ps2_mode();
 #    else
-    uint32_t start = timer_read32();
-    while (!usb_connected_state() && timer_elapsed32(start) < PS2_USB_SETTLE_MS) {
-        // spin until the host enumerates us, or the settle window expires
-    }
-    if (usb_connected_state()) {
-        s_ps2_mode = PS2_MODE_HAPTIC;  // USB host present -> normal USB keyboard + haptic
+    if (io_expander_is_ps2_present()) {
+        ps2_enter_ps2_mode();          // live PS/2 host on the daughterboard
     } else {
-        ps2_enter_ps2_mode();          // no USB after the window -> this board is on PS/2
+        s_ps2_mode = PS2_MODE_HAPTIC;  // no PS/2 hardware -> normal USB keyboard + haptic
     }
 #    endif
 

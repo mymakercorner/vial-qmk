@@ -17,6 +17,7 @@
 #pragma once
 
 int  io_expander_init(void);
+bool io_expander_is_ps2_present(void);
 void io_expander_update_state(void);
 void io_expander_set_led0_status(bool enable);
 void io_expander_set_led1_status(bool enable);
