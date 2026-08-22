@@ -48,7 +48,7 @@
 #    include "haptic.h"        // haptic_disable
 #    include "solenoid.h"      // solenoid_shutdown
 #    include "hardware/pio.h"  // pio1, PIO
-#    ifdef PS2_FORCE_ENABLE
+#    ifdef PS2_DEBUG_CONSOLE
 #        include "hardware/gpio.h"  // gpio_get for the debug heartbeat's live line-level read
 #    endif
 
@@ -60,7 +60,7 @@
 // header must stay byte-identical to the driver repo's copy.
 void ps2_platform_reclaim_pins(PIO pio, uint data_pin, uint clock_pin);
 
-#    ifdef PS2_FORCE_ENABLE
+#    ifdef PS2_DEBUG_CONSOLE
 #        include "print.h"      // xprintf -> USB-CDC console (sendchar) on RP2040/ChibiOS
 #        include "ps2_trace.h"  // ps2_trace_pop / ps2_trace_dropped for the debug drain
 #    endif
@@ -186,6 +186,9 @@ typedef enum {
 } ps2_mode_t;
 
 static ps2_mode_t s_ps2_mode          = PS2_MODE_UNDECIDED;  // decided once in keyboard_post_init_kb
+#    ifdef PS2_DEBUG_CONSOLE
+static uint8_t    s_ps2_detect_read   = 0xFFu;  // presence-pin read at boot (0xFF = never taken)
+#    endif
 static uint32_t   s_ps2_last_bat_ms   = 0;  // last 0xAA re-announce (§7.5)
 
 // --- host_driver_t callbacks (§3.1) -------------------------------------------
@@ -314,25 +317,42 @@ static void ps2_enter_ps2_mode(void) {
 
     s_ps2_mode = PS2_MODE_PS2;
 
-#    ifdef PS2_FORCE_ENABLE
+#    ifdef PS2_DEBUG_CONSOLE
     xprintf("\n[ps2] entered PS/2 mode (FORCED, USB console live). clk=GP%u data=GP%u\n",
             (unsigned)PS2_CLOCK_PIN, (unsigned)PS2_DATA_PIN);
 #    endif
 }
 
-// --- debug trace readout (PS2_FORCE_ENABLE only) ------------------------------
+// --- debug trace readout (PS2_DEBUG_CONSOLE only) ------------------------------
 //
 // Pop the driver's byte-level trace ring buffer and print it over the USB-CDC
 // console (xprintf -> sendchar). Kept in the glue so ps2_trace.c stays byte-
 // identical to the standalone testbed (its own ps2_trace_drain_printf uses stdio
 // printf, which ChibiOS/newlib does not route to the console). Throttled and
 // only called at blob boundaries, so it never perturbs a live PS/2 transaction.
-#    ifdef PS2_FORCE_ENABLE
+#    ifdef PS2_DEBUG_CONSOLE
 static void ps2_debug_drain_trace(void) {
     static uint32_t last_ms   = 0;
     static uint32_t prev_us   = 0;
     static bool     have_prev = false;
     static uint32_t seen_drop = 0;
+
+    // HOLD the ring until the console can actually receive it. ps2_trace_pop()
+    // CONSUMES an event, while xprintf on an unconfigured USB silently discards the
+    // characters - so draining before enumeration destroys the history instead of
+    // printing it. Gating here is what makes the only reproduction that matters
+    // observable: boot the board on PS/2 power ALONE (no USB, so the board and the
+    // host power up together, as they do in production), let the race happen, and
+    // only then plug USB in - the boot burst is still sitting in the ring and dumps
+    // on the first drain after enumeration.
+    //
+    // The ring is 128 events and drops the OLDEST when full (ps2_trace.c), so the
+    // burst we want is what gets sacrificed if traffic keeps coming. Plug USB in
+    // promptly after a failing boot and do not type in the meantime; check the
+    // "event(s) dropped total" line below before trusting a capture.
+    if (usb_device_state_get_configure_state() != USB_DEVICE_STATE_CONFIGURED) {
+        return;
+    }
 
     if (timer_elapsed32(last_ms) < 250u) {
         return;  // rate-limit console traffic to ~4 Hz
@@ -365,7 +385,7 @@ static void ps2_debug_drain_trace(void) {
         seen_drop = dropped;
     }
 }
-#    endif  // PS2_FORCE_ENABLE
+#    endif  // PS2_DEBUG_CONSOLE
 
 // --- main-thread housekeeping (§3.4) ------------------------------------------
 //
@@ -387,7 +407,7 @@ static void ps2_service_main(void) {
         host_set_driver(&s_ps2_host_driver);
     }
 
-#    ifdef PS2_FORCE_ENABLE
+#    ifdef PS2_DEBUG_CONSOLE
     // Unconditional ~1 Hz heartbeat: proves the HID console transport works even
     // when there is zero PS/2 traffic, and dumps the state we need to bisect the
     // "no keys" fault. keys = number of usage bits currently set in the resolved
@@ -430,7 +450,7 @@ static void ps2_service_main(void) {
     // NOTE these ran at a blob boundary when servicing was inline; they now run on
     // the main thread, concurrently with the PS/2 thread, so a trace dump can land
     // mid-sequence. That is acceptable - the trace ring is only read here, and the
-    // whole block is PS2_FORCE_ENABLE-only. It is deliberately NOT moved into the
+    // whole block is PS2_DEBUG_CONSOLE-only. It is deliberately NOT moved into the
     // PS/2 thread: xprintf would put a printf-sized stack requirement on a thread
     // sized for ps2_update, and console I/O has no business in a 50 us poll.
     static bool announced_contact = false;
@@ -549,14 +569,28 @@ static THD_FUNCTION(ps2_thread, arg) {
 // not a configuration any user reaches, so the rest of the file still treats USB
 // device-state events in PS/2 mode as rare (see notify_usb_device_state_change_kb).
 void keyboard_post_init_kb(void) {
+    // ONE read of the presence pin, whatever the build does with it afterwards. It
+    // is an I2C transaction, so reading it twice (once to decide, once to report)
+    // would be both wasteful and a change to what we are trying to observe.
+    const bool ps2_present = io_expander_is_ps2_present();
+
+#    ifdef PS2_DEBUG_CONSOLE
+    // Latched for the one-shot report in housekeeping_task_kb. Recorded even when
+    // PS2_FORCE_ENABLE overrides it below, so a forced bench build still shows what
+    // a production build WOULD have decided.
+    s_ps2_detect_read = ps2_present ? 1u : 0u;
+#    endif
+
 #    ifdef PS2_FORCE_ENABLE
     // DEBUG: ignore the presence pin and always come up in PS/2 mode, for a bench
     // board with no daughterboard fitted or a suspect detect pin. Never enable in a
-    // production build. (This used to exist to bypass the USB check and keep the
-    // console alive; the presence pin now gives that for free.)
+    // production build. NOTE this SKIPS the presence-pin decision entirely, so a
+    // fault that lives in that path cannot reproduce under this flag - which is why
+    // the console output is on PS2_DEBUG_CONSOLE and no longer on this one.
+    (void)ps2_present;
     ps2_enter_ps2_mode();
 #    else
-    if (io_expander_is_ps2_present()) {
+    if (ps2_present) {
         ps2_enter_ps2_mode();          // live PS/2 host on the daughterboard
     } else {
         s_ps2_mode = PS2_MODE_HAPTIC;  // no PS/2 hardware -> normal USB keyboard + haptic
@@ -567,6 +601,23 @@ void keyboard_post_init_kb(void) {
 }
 
 void housekeeping_task_kb(void) {
+#    ifdef PS2_DEBUG_CONSOLE
+    // Report the boot latch ONCE, and do it from here rather than from
+    // keyboard_post_init_kb because USB has not enumerated at post_init and the line
+    // would be discarded. Deliberately OUTSIDE the PS2_MODE_PS2 test below: if the
+    // presence read came back 0 the board is in HAPTIC mode, ps2_service_main never
+    // runs, and the total absence of a heartbeat is otherwise indistinguishable from
+    // a board that crashed. mode=1 is HAPTIC, mode=2 is PS2 (ps2_mode_t); detect is
+    // what io_expander_is_ps2_present() returned, which is 0 both when the pin reads
+    // low AND when the I2C read fails outright.
+    static bool reported_latch = false;
+    if (!reported_latch && usb_device_state_get_configure_state() == USB_DEVICE_STATE_CONFIGURED) {
+        reported_latch = true;
+        xprintf("[ps2] boot latch: detect=%u mode=%u\n",
+                (unsigned)s_ps2_detect_read, (unsigned)s_ps2_mode);
+    }
+#    endif
+
     // Only PS/2 mode needs servicing; HAPTIC mode leaves the default USB host driver
     // untouched. The mode was already latched in keyboard_post_init_kb, so there is
     // no UNDECIDED state to poll here.

@@ -39,14 +39,21 @@
 #define PS2_CLOCK_PIN GP28
 #define PS2_DATA_PIN GP29
 
-/* Strip the driver's byte-level trace ring buffer (ps2_trace.h defaults it to 1
-   for the standalone testbed). Nothing drains it in a production build -- the
-   console readout lived behind PS2_FORCE_ENABLE -- so leaving it on would only
-   cost a 128-entry buffer and a store on every PS/2 byte. For another console
-   bring-up session, set this back to 1 and re-add PS2_FORCE_ENABLE below; the
-   HID console itself needs nothing extra (keyboard.json already has
-   "console": true, and the glue prints with xprintf, which emits regardless of
-   whether debug output has been toggled on at runtime). */
+/* Bring-up instrumentation, off for production. PS2_TRACE_ENABLED strips the
+   driver's byte-level trace ring (ps2_trace.h defaults it to 1 for the standalone
+   testbed); nothing drains it here without the console, so leaving it on would only
+   cost a 128-entry buffer and a store on every PS/2 byte.
+
+   To re-arm for a bench session set PS2_TRACE_ENABLED to 1 and add
+   `#define PS2_DEBUG_CONSOLE`. That gives the 1 Hz heartbeat, the one-shot
+   `boot latch: detect=.. mode=..` line and the RX/TX trace readout. The HID console
+   itself needs nothing extra (keyboard.json already has "console": true, and the
+   glue prints with xprintf, which emits regardless of the runtime debug toggle).
+
+   Do NOT reach for PS2_FORCE_ENABLE to get the console - they were one flag until
+   2026-08-22, which meant every console session silently skipped
+   io_expander_is_ps2_present() and no fault in that path could reproduce while you
+   were watching. Add it only to bypass the presence pin deliberately. */
 #define PS2_TRACE_ENABLED 0
 
 #define SOLENOID_MIN_DWELL 4
