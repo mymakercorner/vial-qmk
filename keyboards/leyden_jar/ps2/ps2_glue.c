@@ -64,6 +64,7 @@ void ps2_platform_reclaim_pins(PIO pio, uint data_pin, uint clock_pin);
 #    ifdef PS2_DEBUG_CONSOLE
 #        include "print.h"      // xprintf -> USB-CDC console (sendchar) on RP2040/ChibiOS
 #        include "ps2_trace.h"  // ps2_trace_pop / ps2_trace_dropped for the debug drain
+#        include "usb_main.h"   // USB_DRIVER (USBD1) + USB_ACTIVE for ps2_console_ready()
 #    endif
 
 // Free-running microsecond clock for ps2_update. We forward-declare the Pico SDK
@@ -192,6 +193,100 @@ static uint8_t    s_ps2_detect_read   = 0xFFu;  // presence-pin read at boot (0x
 #    endif
 static uint32_t   s_ps2_last_bat_ms   = 0;  // last 0xAA re-announce (§7.5)
 
+#    ifdef PS2_DEBUG_CONSOLE
+// --- "while you weren't looking" latches (PS2_DEBUG_CONSOLE only) ---------------
+//
+// The 1 Hz heartbeat in ps2_service_main is LIVE-only: it xprintf's
+// unconditionally, and xprintf on an unenumerated USB silently discards, so every
+// heartbeat emitted during a PS/2-only run is lost. That is precisely the run we
+// need to observe - the "no keys on PS/2" fault only reproduces with USB absent,
+// and plugging USB in to watch it makes it go away.
+//
+// So these accumulate from boot instead, and are dumped ONCE when the console
+// first attaches (housekeeping_task_kb). Together they bisect the whole path from
+// keyswitch to wire. Read the FIRST one that is zero - that is where the chain
+// breaks:
+//
+//   hb      > 0  ->  the QMK main loop is running at all
+//   press   > 0  ->  the capacitive matrix produced key events (keys are SEEN)
+//   publish > 0  ->  resolved reports reached our host driver (glue is installed)
+//   keysmax > 0  ->  at least one of those reports actually carried a held key
+//   thread  > 0  ->  the PS/2 thread is being scheduled
+//   state   > 0  ->  a snapshot was handed to ps2_update; this is separately
+//                    interesting because it is gated on ps2_startup_complete(), so
+//                    publish>0 with state==0 means BAT never finished and the
+//                    driver was discarding every keystroke on purpose
+//   TX lines in the trace that follows  ->  bytes actually reached the PIO
+//   contacted = 1                       ->  the host answered us
+//
+// Written from two threads (press/publish on the QMK main thread, thread/state on
+// the PS/2 thread) and read from a debug print. Torn reads are possible and
+// harmless - these are counters, not invariants. Do not build logic on them.
+static volatile uint32_t s_dbg_hb_ticks  = 0;  // 1 Hz heartbeat iterations since boot
+static volatile uint32_t s_dbg_press_n   = 0;  // key presses seen by pre_process_record_kb
+static volatile uint32_t s_dbg_publish_n = 0;  // ps2_publish_state() calls
+static volatile uint32_t s_dbg_thread_n  = 0;  // ps2_thread loop iterations
+static volatile uint32_t s_dbg_state_n   = 0;  // non-NULL snapshots handed to ps2_update
+static volatile uint8_t  s_dbg_keys_max  = 0;  // most usage bits ever set in one published report
+static volatile uint8_t  s_dbg_usage_1st = 0;  // first non-zero HID usage published (which key it was)
+
+// Chain bisection, rev 8. press/proc/publish are three consecutive points on the
+// path from keyswitch to wire, so the first one that is zero names the broken link:
+//   press=0            -> the matrix produced nothing (fault is upstream of PS/2)
+//   press>0, proc=0    -> dropped between pre_process_record_kb and
+//                         process_record_kb, i.e. inside pre_process_record_quantum
+//   proc>0, publish=0  -> the keycode registered no HID report at all: an unmapped
+//                         / transparent / layer entry in the Vial keymap, or a
+//                         later stage of process_record_quantum consuming it
+// The two timestamps exist because "did this happen before or after USB was plugged
+// in?" decided between two live theories and could not be answered from counters
+// alone - a cumulative counter cannot say WHEN. kc1 is the QMK keycode (not the HID
+// usage) of the very first press, which distinguishes a real key from a layer/KC_NO.
+static volatile uint32_t s_dbg_proc_n      = 0;  // key presses reaching process_record_kb
+static volatile uint32_t s_dbg_t_usb_ms    = 0;  // uptime at which USB first went ACTIVE
+static volatile uint32_t s_dbg_t_press1_ms = 0;  // uptime of the first key press
+static volatile uint16_t s_dbg_kc1         = 0;  // QMK keycode of that first press
+// Uptime of the FIRST heartbeat tick, i.e. the first moment housekeeping_task_kb was
+// reached. This is the one number that separates "the capsense matrix saw nothing"
+// from "the QMK main loop never ran", which look identical in press= (that counter
+// increments from keyboard_task(), so a parked loop reports zero presses exactly like
+// a dead matrix). A cumulative tick COUNT cannot answer it - only the first timestamp
+// can. If this lands near the moment USB went ACTIVE (usb@), the loop was parked in
+// protocol_pre_task's `while (USB_DRIVER.state == USB_SUSPENDED)` until the cable
+// arrived; if it lands near zero, the loop ran from boot and the matrix is the
+// suspect. Trustworthy despite the xprintf-blocking caveat on hb=, because before USB
+// is ACTIVE usb_endpoint_in_send returns immediately instead of blocking.
+static volatile uint32_t s_dbg_t_hb1_ms    = 0;  // uptime of the first heartbeat tick
+
+// DIRECT observation of the USB_SUSPENDED parking condition, sampled from the PS/2
+// thread. This is the trick that makes the theory testable at all: when
+// protocol_pre_task parks the QMK main loop in
+//   while (USB_DRIVER.state == USB_SUSPENDED) { suspend_power_down(); }
+// nothing on the main thread can report it - housekeeping, the heartbeat and every
+// counter above are frozen precisely while the interesting thing is happening. Our
+// PS/2 thread is a separate ChibiOS thread at NORMALPRIO+1 and keeps running, so it
+// can watch. susp/thread is the fraction of the run spent parked; susp1@ is when it
+// first happened. If susp1@ is near zero and susp/thread is close to 1 up until the
+// cable goes in, the main loop was parked for the whole PS/2-only phase and that is
+// the root cause - no inference from hb= required.
+static volatile uint32_t s_dbg_susp_n      = 0;  // thread samples seeing USB_SUSPENDED
+static volatile uint32_t s_dbg_t_susp1_ms  = 0;  // uptime of the first such sample
+
+// Frozen, never-consumed copy of the first trace events the drain ever pops.
+//
+// ps2_trace_pop() CONSUMES. The drain starts the instant USB goes ACTIVE, which is
+// milliseconds after boot when the cable is already plugged - but QMK Toolbox
+// attaches its listener seconds later, and anything xprintf'd in between is dropped
+// on the floor by the host, not buffered. So the boot burst was being popped,
+// printed into nowhere, and destroyed. An empty trace window then reads exactly like
+// "the driver never transmitted", which is how the 2026-08-23 session lost an
+// evening. This copy survives so the burst can be re-printed for as long as the
+// board is up. 32 events is enough for the BAT + the host's init dialogue.
+#        define PS2_DBG_BURST_MAX 32
+static ps2_trace_evt s_dbg_burst[PS2_DBG_BURST_MAX];
+static uint8_t       s_dbg_burst_n = 0;
+#    endif
+
 // --- host_driver_t callbacks (§3.1) -------------------------------------------
 //
 // These fire on the QMK MAIN THREAD (from the report pipeline) whenever the
@@ -211,6 +306,30 @@ static uint32_t   s_ps2_last_bat_ms   = 0;  // last 0xAA re-announce (§7.5)
 // chBSemSignal is deliberately OUTSIDE the lock: it is the normal-context API,
 // not the I-class one.
 static void ps2_publish_state(const uint8_t *next) {
+#    ifdef PS2_DEBUG_CONSOLE
+    // Counted BEFORE the copy and deliberately OUTSIDE the chSysLock below: this is
+    // a 32-byte popcount and that lock masks all interrupts on ARMv6-M. `next` is
+    // the caller's freshly built local, so it is stable here.
+    {
+        uint8_t keys = 0;
+        for (uint8_t i = 0; i < PS2_KEYBOARD_STATE_SIZE_BYTES; i++) {
+            for (uint8_t bit = 0; bit < 8; bit++) {
+                if (next[i] & (uint8_t)(1u << bit)) {
+                    keys++;
+                    if (s_dbg_usage_1st == 0) {
+                        // Bit layout matches ps2_key_state_set(): usage = (index << 3) | bit.
+                        s_dbg_usage_1st = (uint8_t)(((unsigned)i << 3) | bit);
+                    }
+                }
+            }
+        }
+        if (keys > s_dbg_keys_max) {
+            s_dbg_keys_max = keys;
+        }
+        s_dbg_publish_n++;
+    }
+#    endif
+
     chSysLock();
     memcpy(s_ps2_latest_state, next, sizeof(s_ps2_latest_state));
     s_ps2_state_dirty = true;
@@ -376,6 +495,81 @@ static void ps2_enter_ps2_mode(void) {
 // printf, which ChibiOS/newlib does not route to the console). Throttled and
 // only called at blob boundaries, so it never perturbs a live PS/2 transaction.
 #    ifdef PS2_DEBUG_CONSOLE
+// "Will an xprintf from here actually reach the console?" - the ONLY correct
+// predicate for that, and not the obvious one.
+//
+// sendchar -> send_report_buffered -> usb_endpoint_in_send, which returns false
+// immediately unless `usbGetDriverStateI(usbp) == USB_ACTIVE` (usb_driver.c). It
+// never looks at usb_device_state. So USB_ACTIVE is the whole condition.
+//
+// This originally tested usb_device_state_get_configure_state() == CONFIGURED,
+// which cost a bench session on 2026-08-23: the heartbeat printed happily (it is
+// ungated) while the boot latch and the entire trace drain stayed silent, and an
+// empty trace ring reads exactly like "the driver never put a byte on the wire".
+// That field is a SEPARATE bookkeeping variable maintained by usb_event_queue_task
+// draining an event queue: set_suspend() writes SUSPEND(3), set_reset() writes
+// INIT(1), and only a matching WAKEUP/CONFIGURED event writes CONFIGURED(2) back.
+// Miss or reorder one queued event and it sticks at the wrong value forever, with
+// a perfectly working console as the only evidence to the contrary. Do not gate
+// console output on it. The heartbeat prints both values (usb= and cfg=) so the
+// divergence stays visible.
+static inline bool ps2_console_ready(void) {
+    return USB_DRIVER.state == USB_ACTIVE;
+}
+
+// Build stamp, printed in every heartbeat as rev=. BUMP THIS on any change to the
+// debug instrumentation. It exists because "no output" and "old binary still on the
+// board" are indistinguishable from a pasted console line, and we burned several
+// bench rounds on exactly that confusion. rev is the only field that proves which
+// binary is actually running.
+//   6 = usb=/cfg= added to the heartbeat, ps2_console_ready() gate
+//   7 = latch reprints every 5s (was one-shot), frozen boot burst replay
+//   8 = chain line: proc= counter, usb@/press1@ timestamps, kc1=
+//   9 = boot burst printed at most twice (xprintf blocking was stalling the loop)
+//  10 = hb1@ timestamp: separates "matrix saw nothing" from "main loop never ran"
+//  11 = park line: PS/2 thread samples USB_SUSPENDED directly (main loop cannot)
+//  12 = NO_USB_STARTUP_CHECK added in f77/config.h (superseded by 13)
+//  13 = usb_disconnect() in ps2_enter_ps2_mode instead, split-keyboard style;
+//       NOTE no console in PS/2 mode now - comment that call out to debug
+#        define PS2_DBG_REV 13
+
+// Shared by the live drain and the frozen boot-burst replay.
+static const char *ps2_trace_tag_name(uint8_t tag) {
+    switch (tag) {
+        case PS2_TR_TX:      return "TX  ";
+        case PS2_TR_RX:      return "RX  ";
+        case PS2_TR_RX_PERR: return "RX! ";
+        case PS2_TR_RESEND:  return "RSND";
+        case PS2_TR_BAT:     return "BAT ";
+        case PS2_TR_NOTE:    return "NOTE";
+        default:             return "??? ";
+    }
+}
+
+// Re-print the frozen opening events. Safe to call repeatedly - it consumes nothing.
+//
+// THROTTLED HARD, and not for tidiness: xprintf -> send_report_buffered passes
+// TIME_MS2I(100) as its timeout, so a single line can block the calling thread for
+// up to 100 ms when the console endpoint backs up. Dumping ~16 lines every 5 s from
+// housekeeping was stalling the QMK main loop badly enough to corrupt the very
+// measurement it was there to provide: hb fell ~38% behind uptime and looked exactly
+// like the USB_SUSPENDED parking theory we were trying to test. Print the burst a
+// couple of times so a late-attaching console still catches it, then stop.
+static void ps2_debug_print_burst(void) {
+    static uint8_t prints = 0;
+    if (prints >= 2) {
+        return;
+    }
+    prints++;
+    xprintf("[ps2] boot burst: %u frozen event(s)\n", (unsigned)s_dbg_burst_n);
+    for (uint8_t i = 0; i < s_dbg_burst_n; i++) {
+        xprintf("[ps2]   [%lu] %s %02X\n",
+                (unsigned long)s_dbg_burst[i].t_us,
+                ps2_trace_tag_name(s_dbg_burst[i].tag),
+                (unsigned)s_dbg_burst[i].a);
+    }
+}
+
 static void ps2_debug_drain_trace(void) {
     static uint32_t last_ms   = 0;
     static uint32_t prev_us   = 0;
@@ -395,7 +589,7 @@ static void ps2_debug_drain_trace(void) {
     // burst we want is what gets sacrificed if traffic keeps coming. Plug USB in
     // promptly after a failing boot and do not type in the meantime; check the
     // "event(s) dropped total" line below before trusting a capture.
-    if (usb_device_state_get_configure_state() != USB_DEVICE_STATE_CONFIGURED) {
+    if (!ps2_console_ready()) {
         return;
     }
 
@@ -410,18 +604,15 @@ static void ps2_debug_drain_trace(void) {
         prev_us    = e.t_us;
         have_prev  = true;
 
-        const char *k;
-        switch (e.tag) {
-            case PS2_TR_TX:      k = "TX  "; break;
-            case PS2_TR_RX:      k = "RX  "; break;
-            case PS2_TR_RX_PERR: k = "RX! "; break;
-            case PS2_TR_RESEND:  k = "RSND"; break;
-            case PS2_TR_BAT:     k = "BAT "; break;
-            case PS2_TR_NOTE:    k = "NOTE"; break;
-            default:             k = "??? "; break;
+        // Freeze the opening events before printing them - see s_dbg_burst. The pop
+        // above has already removed this event from the ring, so if the console is
+        // not being listened to yet this copy is the only record that survives.
+        if (s_dbg_burst_n < PS2_DBG_BURST_MAX) {
+            s_dbg_burst[s_dbg_burst_n++] = e;
         }
+
         xprintf("[%lu +%ld] %s %02X\n",
-                (unsigned long)e.t_us, (long)dt, k, (unsigned)e.a);
+                (unsigned long)e.t_us, (long)dt, ps2_trace_tag_name(e.tag), (unsigned)e.a);
     }
 
     uint32_t dropped = ps2_trace_dropped();
@@ -466,6 +657,10 @@ static void ps2_service_main(void) {
     static uint32_t s_hb_ms = 0;
     if (timer_elapsed32(s_hb_ms) >= 1000u) {
         s_hb_ms = timer_read32();
+        if (s_dbg_hb_ticks == 0) {
+            s_dbg_t_hb1_ms = s_hb_ms;
+        }
+        s_dbg_hb_ticks++;
         uint8_t keys = 0;
         for (uint8_t i = 0; i < PS2_KEYBOARD_STATE_SIZE_BYTES; i++) {
             uint8_t b = s_ps2_latest_state[i];
@@ -482,12 +677,22 @@ static void ps2_service_main(void) {
         // true line level. PS2_CLOCK_PIN/PS2_DATA_PIN (GPnn) are plain pad numbers.
         unsigned clk = (unsigned)gpio_get(PS2_CLOCK_PIN);
         unsigned dat = (unsigned)gpio_get(PS2_DATA_PIN);
-        xprintf("[ps2] hb startup=%u set=%u scan=%u contacted=%u keys=%u drv=%u qpend=%u busy=%u sent=%u clk=%u dat=%u\n",
+        // usb / cfg are the two USB state variables that must NOT be conflated - see
+        // ps2_console_ready(). usb is ChibiOS's real driver state (usbstate_t:
+        // 0=UNINIT 1=STOP 2=READY 3=SELECTED 4=ACTIVE 5=SUSPENDED - only ACTIVE
+        // delivers anything); cfg is QMK's separate usb_device_state bookkeeping
+        // (usb_configure_state_t: 1=INIT 2=CONFIGURED 3=SUSPEND). Seeing a line at all
+        // already proves usb==4, so cfg!=2 here means that field has gone stale and
+        // anything else gated on it is silently dead.
+        xprintf("[ps2] hb rev=%u startup=%u set=%u scan=%u contacted=%u keys=%u drv=%u qpend=%u busy=%u sent=%u clk=%u dat=%u usb=%u cfg=%u\n",
+                (unsigned)PS2_DBG_REV,
                 (unsigned)s_ps2_dev.startup, (unsigned)s_ps2_dev.current_set,
                 (unsigned)s_ps2_dev.scanning_enabled, (unsigned)s_ps2_dev.host_contacted,
                 (unsigned)keys, (unsigned)(host_get_driver() == &s_ps2_host_driver),
                 (unsigned)ps2_tx_pending(&s_ps2_dev),
-                (unsigned)s_ps2_dev.busy, (unsigned)s_ps2_dev.sent, clk, dat);
+                (unsigned)s_ps2_dev.busy, (unsigned)s_ps2_dev.sent, clk, dat,
+                (unsigned)USB_DRIVER.state,
+                (unsigned)usb_device_state_get_configure_state());
     }
 
     // Report the first host contact once, then stream the byte trace.
@@ -543,6 +748,12 @@ static void ps2_service_protocol(void) {
     }
     chSysUnlock();
 
+#    ifdef PS2_DEBUG_CONSOLE
+    if (state != NULL) {
+        s_dbg_state_n++;
+    }
+#    endif
+
     ps2_update(&s_ps2_dev, ps2_now_us(), state);
 }
 
@@ -576,6 +787,17 @@ static THD_FUNCTION(ps2_thread, arg) {
     chRegSetThreadName("ps2");
 
     while (true) {
+#    ifdef PS2_DEBUG_CONSOLE
+        s_dbg_thread_n++;
+        // Sampled here, not on the main thread, because the main thread is exactly
+        // what stops running when this condition is true. See s_dbg_susp_n.
+        if (USB_DRIVER.state == USB_SUSPENDED) {
+            if (s_dbg_susp_n == 0) {
+                s_dbg_t_susp1_ms = timer_read32();
+            }
+            s_dbg_susp_n++;
+        }
+#    endif
         ps2_service_protocol();
         // Wakes on whichever comes first: the deadline, or a report change
         // signalled from ps2_publish_state(). The timeout is the safety net - if
@@ -647,19 +869,71 @@ void keyboard_post_init_kb(void) {
 
 void housekeeping_task_kb(void) {
 #    ifdef PS2_DEBUG_CONSOLE
-    // Report the boot latch ONCE, and do it from here rather than from
-    // keyboard_post_init_kb because USB has not enumerated at post_init and the line
-    // would be discarded. Deliberately OUTSIDE the PS2_MODE_PS2 test below: if the
-    // presence read came back 0 the board is in HAPTIC mode, ps2_service_main never
-    // runs, and the total absence of a heartbeat is otherwise indistinguishable from
-    // a board that crashed. mode=1 is HAPTIC, mode=2 is PS2 (ps2_mode_t); detect is
-    // what io_expander_is_ps2_present() returned, which is 0 both when the pin reads
-    // low AND when the I2C read fails outright.
-    static bool reported_latch = false;
-    if (!reported_latch && usb_device_state_get_configure_state() == USB_DEVICE_STATE_CONFIGURED) {
-        reported_latch = true;
+    // Report the boot latch every 5 s, FOREVER - never one-shot.
+    //
+    // This was `if (!reported_latch && ...)` and it cost the 2026-08-23 session. USB
+    // is already ACTIVE within milliseconds of boot when the cable is plugged, so the
+    // one-shot fired immediately, printed into a console whose listener (QMK Toolbox)
+    // does not attach for several more seconds, and then latched itself off for good.
+    // Undelivered xprintf output is dropped by the host, not buffered. A one-shot
+    // boot print is therefore unobservable BY CONSTRUCTION on this setup - the same
+    // trap that moved this block out of keyboard_post_init_kb in the first place;
+    // moving it here only narrowed the window instead of closing it.
+    //
+    // Repeating is strictly better than one-shot anyway: the counters keep
+    // accumulating, so a later line also shows what has happened SINCE you attached.
+    //
+    // Deliberately OUTSIDE the PS2_MODE_PS2 test below: if the presence read came
+    // back 0 the board is in HAPTIC mode, ps2_service_main never runs, and the total
+    // absence of a heartbeat is otherwise indistinguishable from a board that
+    // crashed. mode=1 is HAPTIC, mode=2 is PS2 (ps2_mode_t); detect is what
+    // io_expander_is_ps2_present() returned, which is 0 both when the pin reads low
+    // AND when the I2C read fails outright.
+    static uint32_t latch_ms   = 0;
+    static bool     latch_seen = false;
+    if (ps2_console_ready() && s_dbg_t_usb_ms == 0) {
+        // First moment USB is ACTIVE. Stamped here rather than in a USB callback
+        // because this is the same predicate the console itself uses, so the number
+        // means exactly "from here on, output could have been delivered".
+        s_dbg_t_usb_ms = timer_read32();
+    }
+    if (ps2_console_ready() && (!latch_seen || timer_elapsed32(latch_ms) >= 5000u)) {
+        latch_seen = true;
+        latch_ms   = timer_read32();
         xprintf("[ps2] boot latch: detect=%u mode=%u\n",
                 (unsigned)s_ps2_detect_read, (unsigned)s_ps2_mode);
+        // Everything that happened BEFORE this console existed - see the latch block
+        // near s_dbg_hb_ticks for how to read it. `up` is ms since boot, i.e. how long
+        // the unobserved run actually lasted; if it is small you plugged USB in before
+        // the fault had a chance to happen. usage1 is the HID usage of the first key
+        // that ever reached us (04 = 'a'), or 00 if none ever did.
+        xprintf("[ps2] pre-console: up=%lums hb=%lu press=%lu publish=%lu keysmax=%u usage1=%02X thread=%lu state=%lu contacted=%u\n",
+                (unsigned long)timer_read32(),
+                (unsigned long)s_dbg_hb_ticks,
+                (unsigned long)s_dbg_press_n,
+                (unsigned long)s_dbg_publish_n,
+                (unsigned)s_dbg_keys_max,
+                (unsigned)s_dbg_usage_1st,
+                (unsigned long)s_dbg_thread_n,
+                (unsigned long)s_dbg_state_n,
+                (unsigned)s_ps2_dev.host_contacted);
+        // The one line to read off the screen when copy/paste is not available.
+        // usb@ is when USB first went ACTIVE, press1@ when the first key was pressed
+        // - their ORDER is the answer to "was the board still PS/2-only when you
+        // typed?", which no cumulative counter can express.
+        xprintf("[ps2] park: susp=%lu/%lu susp1@%lums\n",
+                (unsigned long)s_dbg_susp_n,
+                (unsigned long)s_dbg_thread_n,
+                (unsigned long)s_dbg_t_susp1_ms);
+        xprintf("[ps2] chain: press=%lu proc=%lu publish=%lu | hb1@%lums usb@%lums press1@%lums kc1=%04X\n",
+                (unsigned long)s_dbg_press_n,
+                (unsigned long)s_dbg_proc_n,
+                (unsigned long)s_dbg_publish_n,
+                (unsigned long)s_dbg_t_hb1_ms,
+                (unsigned long)s_dbg_t_usb_ms,
+                (unsigned long)s_dbg_t_press1_ms,
+                (unsigned)s_dbg_kc1);
+        ps2_debug_print_burst();
     }
 #    endif
 
@@ -726,11 +1000,37 @@ void notify_usb_device_state_change_kb(struct usb_device_state usb_device_state)
 // veto would be too late. pre_process_record_quantum gates process_record entirely
 // (action.c), so returning false here drops the key before process_haptic sees it.
 bool pre_process_record_kb(uint16_t keycode, keyrecord_t *record) {
+#    ifdef PS2_DEBUG_CONSOLE
+    // Every key PRESS the matrix produced, counted before any keycode filtering.
+    // This is the link that says whether the capacitive matrix is seeing keys at
+    // all: if this stays 0 while you hold keys down, the fault is upstream of PS/2
+    // entirely (matrix / calibration / thresholds), not in the driver.
+    if (record->event.pressed) {
+        if (s_dbg_press_n == 0) {
+            s_dbg_t_press1_ms = timer_read32();
+            s_dbg_kc1         = keycode;
+        }
+        s_dbg_press_n++;
+    }
+#    endif
+
     if (s_ps2_mode == PS2_MODE_PS2 &&
         keycode >= QK_HAPTIC_ON && keycode <= QK_HAPTIC_CONTINUOUS_DOWN) {
         return false;  // swallow every haptic keycode while PS/2 owns GP28/GP29
     }
     return pre_process_record_user(keycode, record);
+}
+
+// Present ONLY to count presses that survive pre_process_record_quantum, splitting
+// the "press seen but nothing published" gap in two. No other process_record_kb
+// exists anywhere in keyboards/leyden_jar/, so this does not displace one.
+bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+#    ifdef PS2_DEBUG_CONSOLE
+    if (record->event.pressed) {
+        s_dbg_proc_n++;
+    }
+#    endif
+    return process_record_user(keycode, record);
 }
 
 #endif  // PS2_DEVICE_ENABLE
