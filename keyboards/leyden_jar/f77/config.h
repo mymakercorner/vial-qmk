@@ -39,16 +39,28 @@
 #define PS2_CLOCK_PIN GP28
 #define PS2_DATA_PIN GP29
 
+/* NOTE: PS/2 mode does NOT use NO_USB_STARTUP_CHECK. QMK parks its whole main loop
+   in protocol_pre_task() while USB_DRIVER.state == USB_SUSPENDED, which with no cable
+   attached happens ~135 ms after boot and stops the matrix scan dead - the root cause
+   of "PS/2 emits no keys", found 2026-08-23. That flag would fix it, but it is
+   compile-time and would also disable remote wakeup in USB/haptic mode. Instead
+   ps2_enter_ps2_mode() calls usb_disconnect() at runtime, the same thing QMK's split
+   keyboards do for the half with no host; see the long comment there. Haptic mode is
+   untouched and keeps wake-on-keypress. */
+
 /* Bring-up instrumentation, off for production. PS2_TRACE_ENABLED strips the
    driver's byte-level trace ring (ps2_trace.h defaults it to 1 for the standalone
    testbed); nothing drains it here without the console, so leaving it on would only
    cost a 128-entry buffer and a store on every PS/2 byte.
 
    To re-arm for a bench session set PS2_TRACE_ENABLED to 1 and add
-   `#define PS2_DEBUG_CONSOLE`. That gives the 1 Hz heartbeat, the one-shot
-   `boot latch: detect=.. mode=..` line and the RX/TX trace readout. The HID console
-   itself needs nothing extra (keyboard.json already has "console": true, and the
-   glue prints with xprintf, which emits regardless of the runtime debug toggle).
+   `#define PS2_DEBUG_CONSOLE`. That gives the 1 Hz heartbeat, the repeating
+   `boot latch:` / `pre-console:` / `chain:` / `park:` report, the frozen boot-burst
+   replay and the RX/TX trace readout. In PS/2 mode you must ALSO comment out the
+   usb_disconnect() call in ps2_enter_ps2_mode(), or there is no USB to print to.
+   The HID console itself needs nothing extra (keyboard.json already has
+   "console": true, and the glue prints with xprintf, which emits regardless of the
+   runtime debug toggle).
 
    Do NOT reach for PS2_FORCE_ENABLE to get the console - they were one flag until
    2026-08-22, which meant every console session silently skipped

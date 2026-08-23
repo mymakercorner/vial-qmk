@@ -45,6 +45,7 @@
 #    include "host.h"          // host_set_driver, host_driver_t
 #    include "io_expander.h"   // io_expander_is_ps2_present (boot-time mode select)
 #    include "usb_device_state.h"  // struct usb_device_state (notify hook signature)
+#    include "usb_util.h"      // usb_disconnect (kills the USB device in PS/2 mode)
 #    include "haptic.h"        // haptic_disable
 #    include "solenoid.h"      // solenoid_shutdown
 #    include "hardware/pio.h"  // pio1, PIO
@@ -317,8 +318,52 @@ static void ps2_enter_ps2_mode(void) {
 
     s_ps2_mode = PS2_MODE_PS2;
 
+    // SHUT THE USB DEVICE DOWN. LOAD-BEARING, not tidiness: without it a PS/2-only
+    // board emits no keys at all. Root-caused 2026-08-23.
+    //
+    // tmk_core/protocol/chibios/chibios.c protocol_pre_task() runs at the top of
+    // every main-loop iteration and does:
+    //
+    //     if (USB_DRIVER.state == USB_SUSPENDED) {
+    //         while (USB_DRIVER.state == USB_SUSPENDED) { suspend_power_down(); ... }
+    //     }
+    //
+    // With no USB cable there is no bus, so the RP2040 device controller signals
+    // suspend almost at once (measured: 135 ms after boot) and QMK parks its ENTIRE
+    // main loop there - no matrix scan, no keyboard_task, no reports. Meanwhile the
+    // PS/2 thread created above is a separate ChibiOS thread and keeps running, so
+    // the host sees a perfectly healthy keyboard (BAT answered, set 2, scanning,
+    // commands acknowledged) that simply never types. That split behaviour is what
+    // made this so hard to find - and it is why it never reproduced on the bench:
+    // attaching debug USB to observe it prevents the suspend outright.
+    //
+    // usbDisconnectBus + usbStop leave the driver in USB_STOP, never USB_SUSPENDED,
+    // so the parking loop's condition cannot be true. This is exactly what QMK's own
+    // split keyboards do for the half with no host (split_util.c
+    // is_keyboard_master_impl, comment: "Avoid NO_USB_STARTUP_CHECK - Disable
+    // USB..."). Note split pairs its 2 s usb_connected_state() poll WITH this call;
+    // this file's pre-2026-08-18 latch did the same poll and omitted the disconnect,
+    // which is exactly why that one did not work either - verified on hardware at
+    // commit 9a342c8390, which fails identically.
+    //
+    // Chosen over `#define NO_USB_STARTUP_CHECK` (what QMK auto-applies for
+    // BLUETOOTH_ENABLE, the other "output is not USB" case) because that flag is
+    // compile-time and would also kill remote wakeup in HAPTIC mode, where USB *is*
+    // the output and waking a sleeping host by keypress must keep working. This call
+    // is runtime and mode-scoped: haptic mode never reaches this line.
+    //
+    // CONSEQUENCE, deliberate: in PS/2 mode there is no USB device at all - no HID
+    // console for xprintf, no VIA/Vial. TO DEBUG PS/2 MODE, TEMPORARILY COMMENT OUT
+    // THE usb_disconnect() CALL BELOW and rebuild. It is deliberately NOT wrapped in
+    // `#ifdef PS2_DEBUG_CONSOLE`: that would make the debug build stop exercising the
+    // production path, which is the same trap that hid this bug for a month and that
+    // f77/config.h already warns about for PS2_FORCE_ENABLE. Commenting out a line is
+    // visible and deliberate; a silent build-flavour divergence is not.
+    usb_disconnect();
+
 #    ifdef PS2_DEBUG_CONSOLE
-    xprintf("\n[ps2] entered PS/2 mode (FORCED, USB console live). clk=GP%u data=GP%u\n",
+    // Only reaches a console if the usb_disconnect() above is commented out.
+    xprintf("\n[ps2] entered PS/2 mode. clk=GP%u data=GP%u\n",
             (unsigned)PS2_CLOCK_PIN, (unsigned)PS2_DATA_PIN);
 #    endif
 }
