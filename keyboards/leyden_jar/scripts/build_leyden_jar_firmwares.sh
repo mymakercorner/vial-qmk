@@ -30,4 +30,12 @@ qmk compile -kb leyden_jar/f62 -km vial &
 
 qmk compile -kb leyden_jar/f50 -km vial &
 
+qmk compile -kb leyden_jar/f50_rev2 -km vial &
+
+qmk compile -kb leyden_jar/f4x12 -km vial &
+
+qmk compile -kb leyden_jar/f5x12 -km vial &
+
+qmk compile -kb leyden_jar/f20 -km vial &
+
 wait
