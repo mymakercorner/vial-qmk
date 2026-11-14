@@ -14,8 +14,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "i2c_master.h"
+#include "quantum.h"
 #include "io_expander.h"
+
+#if !defined(LEYDEN_JAR_V2)
+
+/* Rev 3: the LEDs and the PS/2 daughterboard presence pin hang off a PCA9557 I2C IO
+ * expander. Leyden Jar V2 (RP2350B) has enough GPIOs and drops it, see the GPIO
+ * implementation at the end of this file. */
+
+#include "i2c_master.h"
 
 #define IO_EXPANDER_I2C_ADDR    (0x18<<1)
 #define IO_EXPANDER_I2C_READ    (IO_EXPANDER_I2C_ADDR | 1)
@@ -149,3 +157,60 @@ void io_expander_update_state(void) {
     }
 }
 
+#else // LEYDEN_JAR_V2
+
+/* Leyden Jar V2: same API, on RP2350B GPIOs instead of the PCA9557. The board's
+ * config.h names the pins:
+ *   LEYDEN_JAR_LED0_PIN / LED1 / LED2   J2 LED0-2, active high (as the PCA9557 outputs)
+ *   LEYDEN_JAR_PS2_DETECT_PIN           PS/2 daughterboard presence: ~3.33V from the
+ *                                       daughterboard's divider, 47k pull-down on the
+ *                                       controller, so no internal pull here.
+ * The I2C bus is still initialised by dac_init(). */
+
+#if !defined(LEYDEN_JAR_LED0_PIN) || !defined(LEYDEN_JAR_LED1_PIN) || !defined(LEYDEN_JAR_LED2_PIN) || !defined(LEYDEN_JAR_PS2_DETECT_PIN)
+#    error "LEYDEN_JAR_V2 needs LEYDEN_JAR_LED0/1/2_PIN and LEYDEN_JAR_PS2_DETECT_PIN in config.h"
+#endif
+
+static bool s_led0;
+static bool s_led1;
+static bool s_led2;
+
+int io_expander_init(void) {
+    gpio_set_pin_output(LEYDEN_JAR_LED0_PIN);
+    gpio_set_pin_output(LEYDEN_JAR_LED1_PIN);
+    gpio_set_pin_output(LEYDEN_JAR_LED2_PIN);
+    gpio_write_pin_low(LEYDEN_JAR_LED0_PIN);
+    gpio_write_pin_low(LEYDEN_JAR_LED1_PIN);
+    gpio_write_pin_low(LEYDEN_JAR_LED2_PIN);
+    gpio_set_pin_input(LEYDEN_JAR_PS2_DETECT_PIN);
+
+    s_led0 = false;
+    s_led1 = false;
+    s_led2 = false;
+
+    return 1;
+}
+
+bool io_expander_is_ps2_present(void) {
+    return gpio_read_pin(LEYDEN_JAR_PS2_DETECT_PIN) != 0;
+}
+
+void io_expander_set_led0_status(bool enable) {
+    s_led0 = enable;
+}
+
+void io_expander_set_led1_status(bool enable) {
+    s_led1 = enable;
+}
+
+void io_expander_set_led2_status(bool enable) {
+    s_led2 = enable;
+}
+
+void io_expander_update_state(void) {
+    gpio_write_pin(LEYDEN_JAR_LED0_PIN, s_led0);
+    gpio_write_pin(LEYDEN_JAR_LED1_PIN, s_led1);
+    gpio_write_pin(LEYDEN_JAR_LED2_PIN, s_led2);
+}
+
+#endif // LEYDEN_JAR_V2

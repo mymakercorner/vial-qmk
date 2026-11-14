@@ -35,3 +35,22 @@
 #define GP28 28U
 #define GP29 29U
 #define GP30 30U
+
+/* RP2350B (QFN-80) only: GPIO31-47. */
+#define GP31 31U
+#define GP32 32U
+#define GP33 33U
+#define GP34 34U
+#define GP35 35U
+#define GP36 36U
+#define GP37 37U
+#define GP38 38U
+#define GP39 39U
+#define GP40 40U
+#define GP41 41U
+#define GP42 42U
+#define GP43 43U
+#define GP44 44U
+#define GP45 45U
+#define GP46 46U
+#define GP47 47U
