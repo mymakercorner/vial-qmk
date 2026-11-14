@@ -48,10 +48,7 @@
 #    include "usb_util.h"      // usb_disconnect (kills the USB device in PS/2 mode)
 #    include "haptic.h"        // haptic_disable
 #    include "solenoid.h"      // solenoid_shutdown
-#    include "hardware/pio.h"  // pio1, PIO
-#    ifdef PS2_DEBUG_CONSOLE
-#        include "hardware/gpio.h"  // gpio_get for the debug heartbeat's live line-level read
-#    endif
+#    include "hardware/pio.h"  // pio1, PIO: ps2/chibios_compat stand-in, see ps2_platform_chibios.c
 
 #    include "hid_to_ps2.h"    // the portable driver's public surface
 
@@ -67,20 +64,12 @@ void ps2_platform_reclaim_pins(PIO pio, uint data_pin, uint clock_pin);
 #        include "usb_main.h"   // USB_DRIVER (USBD1) + USB_ACTIVE for ps2_console_ready()
 #    endif
 
-// Free-running microsecond clock for ps2_update. We forward-declare the Pico SDK
-// symbol rather than #include <hardware/timer.h>: once quantum.h / ChibiOS headers
-// are in scope a TIMER macro is defined, and timer.h's invalid_params_if(TIMER, ...)
-// then fails to preprocess under -Werror. Two more subtleties forced the exact form
-// below:
-//   - time_us_32() is a *static inline* in that header (returns timer_hw->timerawl),
-//     so there is no linkable symbol - forward-declaring it gives an undefined ref.
-//   - time_us_64() IS a real function (hardware_timer/timer.c, compiled via the
-//     RP2040.mk PICOSDKSRC list, same as pio.c/clocks.c the matrix scanner links).
-// So we call time_us_64() and truncate, exactly like the bare-Pico testbed main.cpp.
-// The low 32 bits are the same µs counter; ps2_update does wrap-safe uint32 math.
-uint64_t time_us_64(void);
+// Free-running microsecond clock for ps2_update: the low 32 bits of the RP TIMER0
+// counter (1 MHz on both the RP2040 and the RP2350), read raw without latching -
+// the same source as pico-sdk's time_us_32() and QMK's wait_us() on this port.
+// ps2_update does wrap-safe uint32 math.
 static inline uint32_t ps2_now_us(void) {
-    return (uint32_t)time_us_64();
+    return TIMER0->TIMERAWL;
 }
 
 // --- required board pins (no defaults; a PS/2 board must declare them) ---------
@@ -670,13 +659,11 @@ static void ps2_service_main(void) {
         // ps2out PIO's `wait 1 gpio <clock>` never releases, so no frame can start and
         // qpend stays stuck at 1 - i.e. a missing pull-up / held-low / miswired clock.
         // busy: bit0 = PIO active or host-inhibit (clock low), bit1 = byte-in-flight guard.
-        // Pico SDK gpio_get (reads sio_hw->gpio_in) rather than ChibiOS palReadLine:
-        // the latter expands to SIO->GPIO_IN, and the Pico SDK header #defines
-        // GPIO_IN 0, so the PAL macro fails to compile in this mixed TU. The pad
-        // input reaches the SIO even while the pin is muxed to PIO, so this is the
-        // true line level. PS2_CLOCK_PIN/PS2_DATA_PIN (GPnn) are plain pad numbers.
-        unsigned clk = (unsigned)gpio_get(PS2_CLOCK_PIN);
-        unsigned dat = (unsigned)gpio_get(PS2_DATA_PIN);
+        // palReadLine reads SIO->GPIO_IN: the pad input reaches the SIO even while
+        // the pin is muxed to PIO, so this is the true line level.
+        // PS2_CLOCK_PIN/PS2_DATA_PIN (GPnn) are plain pad numbers.
+        unsigned clk = (unsigned)palReadLine(PS2_CLOCK_PIN);
+        unsigned dat = (unsigned)palReadLine(PS2_DATA_PIN);
         // usb / cfg are the two USB state variables that must NOT be conflated - see
         // ps2_console_ready(). usb is ChibiOS's real driver state (usbstate_t:
         // 0=UNINIT 1=STOP 2=READY 3=SELECTED 4=ACTIVE 5=SUSPENDED - only ACTIVE
